@@ -1,15 +1,19 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 import { ChatService } from '../../core/services/chat.service';
 import { PresenceService } from '../../core/services/presence.service';
 import { UserService } from '../../core/services/user.service';
+import { WebRTCService } from '../../core/services/webrtc.service';
 import { Conversation } from '../../core/models/chat.model';
 import { User } from '../../core/models/user.model';
 import { ConversationListComponent } from './components/conversation-list/conversation-list.component';
 import { MessageWindowComponent } from './components/message-window/message-window.component';
 import { MessageInputComponent } from './components/message-input/message-input.component';
+import { IncomingCallModalComponent } from './components/incoming-call-modal/incoming-call-modal.component';
+import { ActiveCallOverlayComponent } from './components/active-call-overlay/active-call-overlay.component';
+import { CallHistoryModalComponent } from './components/call-history-modal/call-history-modal.component';
 
 @Component({
   selector: 'app-chat',
@@ -20,6 +24,9 @@ import { MessageInputComponent } from './components/message-input/message-input.
     ConversationListComponent,
     MessageWindowComponent,
     MessageInputComponent,
+    IncomingCallModalComponent,
+    ActiveCallOverlayComponent,
+    CallHistoryModalComponent,
   ],
   template: `
     <div class="chat-layout" [class.mobile-thread-open]="mobileThreadOpen()">
@@ -31,6 +38,7 @@ import { MessageInputComponent } from './components/message-input/message-input.
           [onlineUserIds]="presenceService.onlineUserIds()"
           (conversationSelected)="onSelectConversation($event)"
           (newChatClicked)="openNewChatModal()"
+          (callHistoryClicked)="openCallHistoryModal()"
         ></app-conversation-list>
       </div>
 
@@ -47,6 +55,7 @@ import { MessageInputComponent } from './components/message-input/message-input.
               [isPartnerOnline]="presenceService.isUserOnline(activeConv.other_participant?.id)"
               [typingUser]="chatService.typingUser()"
               (backClicked)="closeMobileThread()"
+              (startAudioCall)="onStartAudioCall(activeConv.other_participant)"
             ></app-message-window>
 
             <app-message-input
@@ -131,6 +140,38 @@ import { MessageInputComponent } from './components/message-input/message-input.
             </div>
           </div>
         </div>
+      }
+
+      <!-- Incoming Call Notification Modal -->
+      @if (webrtcService.callState() === 'ringing' && webrtcService.currentCall(); as call) {
+        <app-incoming-call-modal
+          [callerName]="call.partner_name"
+          [callerAvatar]="call.partner_avatar"
+          [callType]="call.call_type"
+          (accepted)="webrtcService.acceptCall()"
+          (rejected)="webrtcService.rejectCall('declined')"
+        ></app-incoming-call-modal>
+      }
+
+      <!-- Active Call Overlay Screen -->
+      @if ((webrtcService.callState() === 'calling' || webrtcService.callState() === 'connected') && webrtcService.currentCall(); as call) {
+        <app-active-call-overlay
+          [partnerName]="call.partner_name"
+          [partnerAvatar]="call.partner_avatar"
+          [callState]="webrtcService.callState()"
+          [isAudioMuted]="webrtcService.isAudioMuted()"
+          [remoteStream]="webrtcService.remoteStream()"
+          (toggleMute)="webrtcService.toggleAudio()"
+          (endCall)="webrtcService.endCall()"
+        ></app-active-call-overlay>
+      }
+
+      <!-- Call History Modal -->
+      @if (showCallHistoryModal()) {
+        <app-call-history-modal
+          (close)="closeCallHistoryModal()"
+          (callRequested)="onStartAudioCall($event)"
+        ></app-call-history-modal>
       }
     </div>
   `,
@@ -345,21 +386,46 @@ import { MessageInputComponent } from './components/message-input/message-input.
     }
   `],
 })
-export class ChatComponent implements OnInit {
+export class ChatComponent implements OnInit, OnDestroy {
   readonly authService = inject(AuthService);
   readonly chatService = inject(ChatService);
   readonly userService = inject(UserService);
   readonly presenceService = inject(PresenceService);
+  readonly webrtcService = inject(WebRTCService);
 
   mobileThreadOpen = signal<boolean>(false);
   showNewChatModal = signal<boolean>(false);
+  showCallHistoryModal = signal<boolean>(false);
   usersList = signal<User[]>([]);
   loadingUsers = signal<boolean>(false);
   userSearchQuery = '';
 
   ngOnInit(): void {
     this.presenceService.connect();
+    this.webrtcService.connectSignaling();
     this.chatService.loadConversations().subscribe();
+  }
+
+  ngOnDestroy(): void {
+    this.webrtcService.disconnectSignaling();
+  }
+
+  onStartAudioCall(partner?: User | null): void {
+    if (!partner) return;
+    this.webrtcService.startCall(
+      partner.id,
+      partner.name || partner.email.split('@')[0],
+      'audio',
+      partner.profile_image || partner.avatar
+    );
+  }
+
+  openCallHistoryModal(): void {
+    this.showCallHistoryModal.set(true);
+  }
+
+  closeCallHistoryModal(): void {
+    this.showCallHistoryModal.set(false);
   }
 
   onSelectConversation(conv: Conversation): void {

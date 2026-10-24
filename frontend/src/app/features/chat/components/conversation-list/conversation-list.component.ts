@@ -13,17 +13,30 @@ import { User } from '../../../../core/models/user.model';
       <div class="sidebar-header">
         <div class="header-title-row">
           <h2 class="sidebar-title">Chats</h2>
-          <button
-            type="button"
-            class="btn-icon"
-            (click)="newChatClicked.emit()"
-            title="Start new conversation"
-            aria-label="Start new conversation"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 5v14M5 12h14"></path>
-            </svg>
-          </button>
+          <div class="header-actions">
+            <button
+              type="button"
+              class="btn-icon"
+              (click)="callHistoryClicked.emit()"
+              title="View Call History"
+              aria-label="View Call History"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="btn-icon"
+              (click)="newChatClicked.emit()"
+              title="Start new conversation"
+              aria-label="Start new conversation"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div class="search-box">
@@ -132,6 +145,12 @@ import { User } from '../../../../core/models/user.model';
       color: #f8fafc;
       margin: 0;
       letter-spacing: -0.02em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
     }
 
     .btn-icon {
@@ -353,6 +372,7 @@ export class ConversationListComponent {
   @Input() onlineUserIds: Set<number> = new Set();
   @Output() conversationSelected = new EventEmitter<Conversation>();
   @Output() newChatClicked = new EventEmitter<void>();
+  @Output() callHistoryClicked = new EventEmitter<void>();
 
   searchQuery = '';
 

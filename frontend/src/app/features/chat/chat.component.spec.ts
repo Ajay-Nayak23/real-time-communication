@@ -156,4 +156,19 @@ describe('ChatComponent', () => {
     component.onSendMessage('Testing send message');
     expect(sendSpy).toHaveBeenCalledWith(1, 'Testing send message');
   });
+
+  it('should initiate audio call when onStartAudioCall is invoked', async () => {
+    const startCallSpy = vi.spyOn(component.webrtcService, 'startCall').mockResolvedValue();
+    component.onStartAudioCall(mockPeerUser);
+    expect(startCallSpy).toHaveBeenCalledWith(2, 'Bob', 'audio', undefined);
+  });
+
+  it('should toggle call history modal', () => {
+    expect(component.showCallHistoryModal()).toBe(false);
+    component.openCallHistoryModal();
+    expect(component.showCallHistoryModal()).toBe(true);
+    component.closeCallHistoryModal();
+    expect(component.showCallHistoryModal()).toBe(false);
+  });
 });
+

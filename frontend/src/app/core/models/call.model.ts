@@ -45,3 +45,11 @@ export interface CallInviteEvent {
   call_type: CallType;
   created_at: string;
 }
+
+export interface CallHistoryResponse {
+  count?: number;
+  next: string | null;
+  previous: string | null;
+  results: CallRecord[];
+}
+

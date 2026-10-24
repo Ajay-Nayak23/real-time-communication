@@ -67,6 +67,20 @@ import { User } from '../../../../core/models/user.model';
             }
           </div>
         </div>
+
+        <div class="header-actions">
+          <button
+            type="button"
+            class="btn-header-call"
+            (click)="startAudioCall.emit()"
+            title="Start Audio Call"
+            aria-label="Start Audio Call"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+            </svg>
+          </button>
+        </div>
       </header>
 
       <!-- Message History Viewport -->
@@ -242,6 +256,32 @@ import { User } from '../../../../core/models/user.model';
       font-weight: 600;
       color: #f8fafc;
       margin: 0;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-header-call {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      cursor: pointer;
+      transition: all 0.2s;
+      &:hover {
+        background: #3b82f6;
+        color: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+      }
     }
 
     .header-status {
@@ -480,6 +520,7 @@ export class MessageWindowComponent implements OnChanges, AfterViewInit {
   @Input() typingUser: string | null = null;
   @Input() isPartnerOnline = false;
   @Output() backClicked = new EventEmitter<void>();
+  @Output() startAudioCall = new EventEmitter<void>();
 
   @ViewChild('messagesViewport') private messagesViewport!: ElementRef<HTMLDivElement>;
 

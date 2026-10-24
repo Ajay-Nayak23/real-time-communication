@@ -2,7 +2,7 @@
 
 This file tracks the implementation progress of all 51 GitHub issues across the 11 development milestones.
 
-**Overall Progress:** `29 / 51 completed` (56.9%)
+**Overall Progress:** `33 / 51 completed` (64.7%)
 
 ---
 
@@ -215,12 +215,12 @@ This file tracks the implementation progress of all 51 GitHub issues across the 
 
 ---
 
-## 7. Audio Calling `(0/4)`
+## 7. Audio Calling `(4/4)`
 
-- [ ] **[#30](https://github.com/Ajay-Nayak23/real-time-communication/issues/30)** — Implement incoming and outgoing audio call signaling flow
-- [ ] **[#31](https://github.com/Ajay-Nayak23/real-time-communication/issues/31)** — `RTC-027`: Build incoming call notification modal and accept/reject controls
-- [ ] **[#32](https://github.com/Ajay-Nayak23/real-time-communication/issues/32)** — Build audio call active screen with microphone mute/unmute and call termination
-- [ ] **[#33](https://github.com/Ajay-Nayak23/real-time-communication/issues/33)** — `RTC-029`: Implement call history tracking, persistence, and REST API
+- [x] **[#30](https://github.com/Ajay-Nayak23/real-time-communication/issues/30)** — Implement incoming and outgoing audio call signaling flow `(Completed)`
+- [x] **[#31](https://github.com/Ajay-Nayak23/real-time-communication/issues/31)** — `RTC-027`: Build incoming call notification modal and accept/reject controls `(Completed)`
+- [x] **[#32](https://github.com/Ajay-Nayak23/real-time-communication/issues/32)** — Build audio call active screen with microphone mute/unmute and call termination `(Completed)`
+- [x] **[#33](https://github.com/Ajay-Nayak23/real-time-communication/issues/33)** — `RTC-029`: Implement call history tracking, persistence, and REST API `(Completed)`
 
 ---
 

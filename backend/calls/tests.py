@@ -363,3 +363,104 @@ class CallSignalingConsumerWebSocketTests(TestCase):
 
         await alice_comm.disconnect()
         await bob_comm.disconnect()
+
+
+class CallHistoryApiTests(TestCase):
+    """
+    Integration tests for CallHistoryListView and CallDetailView REST endpoints (Issue #33 / RTC-029).
+    """
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        self.client = APIClient()
+
+        self.user1 = User.objects.create_user(
+            email="alice.history@example.com",
+            name="Alice History",
+            password="StrongPassword123!"
+        )
+        self.user2 = User.objects.create_user(
+            email="bob.history@example.com",
+            name="Bob History",
+            password="StrongPassword123!"
+        )
+        self.user3 = User.objects.create_user(
+            email="charlie.stranger@example.com",
+            name="Charlie Stranger",
+            password="StrongPassword123!"
+        )
+
+        self.token = str(RefreshToken.for_user(self.user1).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+
+        # Call 1: Alice called Bob (ended, 120s, audio)
+        self.call1 = Call.objects.create(
+            caller=self.user1,
+            callee=self.user2,
+            call_type=Call.CallType.AUDIO,
+            status=Call.Status.ENDED,
+            duration=120
+        )
+        # Call 2: Bob called Alice (missed, 0s, audio)
+        self.call2 = Call.objects.create(
+            caller=self.user2,
+            callee=self.user1,
+            call_type=Call.CallType.AUDIO,
+            status=Call.Status.MISSED,
+            duration=0
+        )
+        # Call 3: Bob called Charlie (unrelated to Alice)
+        self.call3 = Call.objects.create(
+            caller=self.user2,
+            callee=self.user3,
+            call_type=Call.CallType.AUDIO,
+            status=Call.Status.ENDED,
+            duration=60
+        )
+
+    def test_call_history_unauthenticated_forbidden(self):
+        """Unauthenticated requests to /api/calls/history/ return 401."""
+        from rest_framework.test import APIClient
+        unauth_client = APIClient()
+        response = unauth_client.get('/api/calls/history/')
+        self.assertEqual(response.status_code, 401)
+
+    def test_call_history_list_contains_only_user_calls(self):
+        """Alice receives only calls where she was caller or callee."""
+        response = self.client.get('/api/calls/history/')
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data.get('results', response.data)
+        call_ids = [c['id'] for c in results]
+
+        self.assertIn(self.call1.id, call_ids)
+        self.assertIn(self.call2.id, call_ids)
+        self.assertNotIn(self.call3.id, call_ids)
+
+        # Check other_participant serialization
+        item = next(c for c in results if c['id'] == self.call1.id)
+        self.assertEqual(item['other_participant']['id'], self.user2.id)
+
+    def test_call_history_filter_by_status(self):
+        """Filtering by status=missed returns only missed calls."""
+        response = self.client.get('/api/calls/history/?status=missed')
+        self.assertEqual(response.status_code, 200)
+
+        results = response.data.get('results', response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['id'], self.call2.id)
+        self.assertEqual(results[0]['status'], 'missed')
+
+    def test_call_detail_view_permissions(self):
+        """User can retrieve call they participated in, but not other users' calls."""
+        # Alice retrieves call1 (success)
+        res_ok = self.client.get(f'/api/calls/{self.call1.id}/')
+        self.assertEqual(res_ok.status_code, 200)
+        self.assertEqual(res_ok.data['id'], self.call1.id)
+
+        # Alice tries to retrieve call3 (not participant -> 404)
+        res_fail = self.client.get(f'/api/calls/{self.call3.id}/')
+        self.assertEqual(res_fail.status_code, 404)
+
