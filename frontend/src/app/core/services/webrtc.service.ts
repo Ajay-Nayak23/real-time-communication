@@ -41,7 +41,7 @@ export class WebRTCService implements OnDestroy {
       return;
     }
 
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
@@ -59,6 +59,7 @@ export class WebRTCService implements OnDestroy {
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
+        console.log('[WebRTC] Signaling WebSocket connected');
         this.isSocketConnected.set(true);
       };
 
@@ -71,22 +72,32 @@ export class WebRTCService implements OnDestroy {
         }
       };
 
-      this.socket.onclose = () => {
+      this.socket.onclose = (event: CloseEvent) => {
+        console.warn(`[WebRTC] Signaling WebSocket closed (code=${event.code})`);
         this.isSocketConnected.set(false);
         this.socket = null;
+        if (event.code === 4401) {
+          this.authService.refreshToken().subscribe({
+            next: () => this.connectSignaling(),
+            error: () => {},
+          });
+          return;
+        }
         if (this.shouldReconnect && this.authService.isAuthenticated()) {
           this.reconnectTimer = setTimeout(() => {
             if (this.shouldReconnect) {
               this.connectSignaling();
             }
-          }, 4000);
+          }, 3000);
         }
       };
 
-      this.socket.onerror = () => {
+      this.socket.onerror = (err) => {
+        console.error('[WebRTC] Signaling WebSocket error:', err);
         this.isSocketConnected.set(false);
       };
-    } catch {
+    } catch (err) {
+      console.error('[WebRTC] Failed to initialize WebSocket:', err);
       this.isSocketConnected.set(false);
     }
   }
@@ -119,6 +130,24 @@ export class WebRTCService implements OnDestroy {
     calleeAvatar?: string | null
   ): Promise<void> {
     this.error.set(null);
+    console.log(`[WebRTC] Starting ${callType} call to user #${calleeId} (${calleeName})`);
+
+    // Ensure signaling connection is active
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      console.log('[WebRTC] Signaling socket not ready, attempting connection...');
+      this.connectSignaling();
+      let retries = 0;
+      while ((!this.socket || this.socket.readyState !== WebSocket.OPEN) && retries < 15) {
+        await new Promise((r) => setTimeout(r, 100));
+        retries++;
+      }
+    }
+
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      const msg = 'Signaling server is not connected. Please ensure backend is running.';
+      this.error.set(msg);
+      throw new Error(msg);
+    }
 
     try {
       const stream = await this.captureMedia(callType);
@@ -141,7 +170,8 @@ export class WebRTCService implements OnDestroy {
         call_type: callType,
       });
     } catch (err: any) {
-      this.error.set('Could not access microphone or camera.');
+      console.error('[WebRTC] startCall failed:', err);
+      this.error.set(err.message || 'Could not access media devices.');
       this.cleanupMedia();
       this.callState.set('idle');
       throw err;
@@ -432,8 +462,14 @@ export class WebRTCService implements OnDestroy {
   // --- Media & Resource Cleanup ---
 
   private async captureMedia(callType: CallType): Promise<MediaStream> {
-    if (!isPlatformBrowser(this.platformId) || !navigator.mediaDevices) {
+    if (!isPlatformBrowser(this.platformId)) {
       throw new Error('Media devices unavailable in current environment.');
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error(
+        'Audio capture is unavailable. If you are accessing this app over HTTP, please use http://localhost:4200 instead of an IP address for browser security.'
+      );
     }
 
     const constraints: MediaStreamConstraints = {
@@ -441,7 +477,17 @@ export class WebRTCService implements OnDestroy {
       video: callType === 'video',
     };
 
-    return await navigator.mediaDevices.getUserMedia(constraints);
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        throw new Error('Microphone permission was denied. Please allow microphone access in your browser address bar.');
+      }
+      if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        throw new Error('No microphone device found on your computer.');
+      }
+      throw new Error(err.message || 'Could not access microphone.');
+    }
   }
 
   private cleanupMedia(): void {
@@ -473,8 +519,13 @@ export class WebRTCService implements OnDestroy {
   private sendSignalingMessage(message: any): void {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       try {
+        console.log('[WebRTC] Outgoing signaling message:', message.type);
         this.socket.send(JSON.stringify(message));
-      } catch {}
+      } catch (err) {
+        console.error('[WebRTC] Failed to send frame:', err);
+      }
+    } else {
+      console.warn('[WebRTC] Cannot send frame: socket not open (state=' + this.socket?.readyState + ')', message);
     }
   }
 }

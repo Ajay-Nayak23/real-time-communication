@@ -105,9 +105,24 @@ import { User } from '../../../../core/models/user.model';
                   <span class="message-preview">
                     {{ conv.last_message?.content || 'No messages yet' }}
                   </span>
-                  @if (conv.unread_count > 0) {
-                    <span class="unread-badge">{{ conv.unread_count }}</span>
-                  }
+                  <div class="conv-meta-actions">
+                    @if (conv.unread_count > 0) {
+                      <span class="unread-badge">{{ conv.unread_count }}</span>
+                    }
+                    @if (conv.other_participant) {
+                      <button
+                        type="button"
+                        class="btn-card-call"
+                        (click)="onCallClick($event, conv.other_participant)"
+                        title="Start Audio Call"
+                        aria-label="Start Audio Call"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                        </svg>
+                      </button>
+                    }
+                  </div>
                 </div>
               </div>
             </div>
@@ -350,6 +365,35 @@ import { User } from '../../../../core/models/user.model';
       text-overflow: ellipsis;
     }
 
+    .conv-meta-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-shrink: 0;
+    }
+
+    .btn-card-call {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      color: #60a5fa;
+      cursor: pointer;
+      opacity: 0.8;
+      transition: all 0.2s;
+      svg { pointer-events: none; }
+      &:hover {
+        opacity: 1;
+        background: #3b82f6;
+        color: #ffffff;
+        transform: scale(1.05);
+      }
+    }
+
     .unread-badge {
       background: #3b82f6;
       color: #ffffff;
@@ -373,6 +417,7 @@ export class ConversationListComponent {
   @Output() conversationSelected = new EventEmitter<Conversation>();
   @Output() newChatClicked = new EventEmitter<void>();
   @Output() callHistoryClicked = new EventEmitter<void>();
+  @Output() callUser = new EventEmitter<User>();
 
   searchQuery = '';
 
@@ -437,5 +482,11 @@ export class ConversationListComponent {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  onCallClick(event: MouseEvent, user: User): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.callUser.emit(user);
   }
 }

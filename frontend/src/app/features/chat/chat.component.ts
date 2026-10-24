@@ -6,6 +6,7 @@ import { ChatService } from '../../core/services/chat.service';
 import { PresenceService } from '../../core/services/presence.service';
 import { UserService } from '../../core/services/user.service';
 import { WebRTCService } from '../../core/services/webrtc.service';
+import { AlertService } from '../../core/services/alert.service';
 import { Conversation } from '../../core/models/chat.model';
 import { User } from '../../core/models/user.model';
 import { ConversationListComponent } from './components/conversation-list/conversation-list.component';
@@ -39,6 +40,7 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
           (conversationSelected)="onSelectConversation($event)"
           (newChatClicked)="openNewChatModal()"
           (callHistoryClicked)="openCallHistoryModal()"
+          (callUser)="onStartAudioCall($event)"
         ></app-conversation-list>
       </div>
 
@@ -55,7 +57,7 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
               [isPartnerOnline]="presenceService.isUserOnline(activeConv.other_participant?.id)"
               [typingUser]="chatService.typingUser()"
               (backClicked)="closeMobileThread()"
-              (startAudioCall)="onStartAudioCall(activeConv.other_participant)"
+              (startAudioCall)="onStartAudioCall($event || activeConv.other_participant)"
             ></app-message-window>
 
             <app-message-input
@@ -132,7 +134,20 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
                         <span class="user-name">{{ user.name || user.email }}</span>
                         <span class="user-email">{{ user.email }}</span>
                       </div>
-                      <button type="button" class="btn-connect">Chat</button>
+                      <div class="user-item-actions">
+                        <button
+                          type="button"
+                          class="btn-user-call"
+                          (click)="$event.stopPropagation(); startDirectCall(user)"
+                          title="Start audio call"
+                          aria-label="Start audio call"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                          </svg>
+                        </button>
+                        <button type="button" class="btn-connect">Chat</button>
+                      </div>
                     </div>
                   }
                 </div>
@@ -148,7 +163,7 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
           [callerName]="call.partner_name"
           [callerAvatar]="call.partner_avatar"
           [callType]="call.call_type"
-          (accepted)="webrtcService.acceptCall()"
+          (accepted)="onAcceptIncomingCall()"
           (rejected)="webrtcService.rejectCall('declined')"
         ></app-incoming-call-modal>
       }
@@ -351,6 +366,32 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
     .user-name { font-weight: 600; color: #f8fafc; font-size: 0.9rem; }
     .user-email { font-size: 0.775rem; color: #94a3b8; }
 
+    .user-item-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-user-call {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #60a5fa;
+      cursor: pointer;
+      transition: all 0.2s;
+      svg { pointer-events: none; }
+      &:hover {
+        background: #3b82f6;
+        color: #ffffff;
+        transform: scale(1.05);
+      }
+    }
+
     .btn-connect {
       background: rgba(59, 130, 246, 0.2);
       border: 1px solid rgba(59, 130, 246, 0.4);
@@ -392,6 +433,7 @@ export class ChatComponent implements OnInit, OnDestroy {
   readonly userService = inject(UserService);
   readonly presenceService = inject(PresenceService);
   readonly webrtcService = inject(WebRTCService);
+  readonly alertService = inject(AlertService);
 
   mobileThreadOpen = signal<boolean>(false);
   showNewChatModal = signal<boolean>(false);
@@ -411,13 +453,33 @@ export class ChatComponent implements OnInit, OnDestroy {
   }
 
   onStartAudioCall(partner?: User | null): void {
-    if (!partner) return;
-    this.webrtcService.startCall(
-      partner.id,
-      partner.name || partner.email.split('@')[0],
-      'audio',
-      partner.profile_image || partner.avatar
-    );
+    if (!partner) {
+      const active = this.chatService.activeConversation();
+      const currentId = this.authService.currentUser()?.id;
+      partner = active?.participants?.find((p) => p.user?.id !== currentId)?.user || null;
+    }
+
+    if (!partner) {
+      this.alertService.showWarning('Could not determine recipient for call.');
+      return;
+    }
+
+    this.webrtcService
+      .startCall(
+        partner.id,
+        partner.name || partner.email.split('@')[0],
+        'audio',
+        partner.profile_image || partner.avatar
+      )
+      .catch((err) => {
+        this.alertService.showError(err.message || 'Failed to start audio call.');
+      });
+  }
+
+  onAcceptIncomingCall(): void {
+    this.webrtcService.acceptCall().catch((err) => {
+      this.alertService.showError(err.message || 'Failed to answer call.');
+    });
   }
 
   openCallHistoryModal(): void {
@@ -482,6 +544,11 @@ export class ChatComponent implements OnInit, OnDestroy {
         console.error('Error starting conversation:', err);
       },
     });
+  }
+
+  startDirectCall(user: User): void {
+    this.closeNewChatModal();
+    this.onStartAudioCall(user);
   }
 
   getDisplayName(user?: User | null): string {

@@ -72,7 +72,7 @@ import { User } from '../../../../core/models/user.model';
           <button
             type="button"
             class="btn-header-call"
-            (click)="startAudioCall.emit()"
+            (click)="onStartCall($event)"
             title="Start Audio Call"
             aria-label="Start Audio Call"
           >
@@ -276,6 +276,7 @@ import { User } from '../../../../core/models/user.model';
       color: #60a5fa;
       cursor: pointer;
       transition: all 0.2s;
+      svg { pointer-events: none; }
       &:hover {
         background: #3b82f6;
         color: #ffffff;
@@ -520,9 +521,36 @@ export class MessageWindowComponent implements OnChanges, AfterViewInit {
   @Input() typingUser: string | null = null;
   @Input() isPartnerOnline = false;
   @Output() backClicked = new EventEmitter<void>();
-  @Output() startAudioCall = new EventEmitter<void>();
+  @Output() startAudioCall = new EventEmitter<User | null>();
 
   @ViewChild('messagesViewport') private messagesViewport!: ElementRef<HTMLDivElement>;
+
+  onStartCall(event: MouseEvent): void {
+    event.stopPropagation();
+    event.preventDefault();
+    const partner = this.getOtherParticipant();
+    this.startAudioCall.emit(partner);
+  }
+
+  getOtherParticipant(): User | null {
+    if (this.conversation?.other_participant) {
+      return this.conversation.other_participant;
+    }
+    if (this.conversation?.participants && this.conversation.participants.length > 0) {
+      if (this.currentUserId) {
+        const part = this.conversation.participants.find((p) => p.user?.id !== this.currentUserId);
+        if (part?.user) {
+          return part.user;
+        }
+      } else {
+        const first = this.conversation.participants[0];
+        if (first?.user) {
+          return first.user;
+        }
+      }
+    }
+    return null;
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['messages'] || changes['conversation']) {
