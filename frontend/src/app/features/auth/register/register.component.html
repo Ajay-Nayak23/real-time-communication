@@ -1,0 +1,119 @@
+<div class="auth-card">
+  <div class="auth-header">
+    <div class="auth-badge">Get Started</div>
+    <h2 class="auth-title">Create your account</h2>
+    <p class="auth-subtitle">Join the real-time communication platform</p>
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert-error">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  @if (successMessage()) {
+    <div class="alert-success">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+      </svg>
+      <span>{{ successMessage() }}</span>
+    </div>
+  }
+
+  <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="auth-form" novalidate>
+    <div class="form-group">
+      <label for="name">Full Name</label>
+      <input
+        id="name"
+        type="text"
+        formControlName="name"
+        placeholder="Ajay Nayak"
+        autocomplete="name"
+        [class.invalid]="registerForm.controls.name.invalid && registerForm.controls.name.touched"
+      />
+      @if (registerForm.controls.name.invalid && registerForm.controls.name.touched) {
+        <span class="field-error">
+          @if (registerForm.controls.name.errors?.['required']) { Name is required. }
+        </span>
+      }
+    </div>
+
+    <div class="form-group">
+      <label for="reg-email">Email Address</label>
+      <input
+        id="reg-email"
+        type="email"
+        formControlName="email"
+        placeholder="name@example.com"
+        autocomplete="email"
+        [class.invalid]="registerForm.controls.email.invalid && registerForm.controls.email.touched"
+      />
+      @if (registerForm.controls.email.invalid && registerForm.controls.email.touched) {
+        <span class="field-error">
+          @if (registerForm.controls.email.errors?.['required']) { Email is required. }
+          @if (registerForm.controls.email.errors?.['email']) { Please enter a valid email address. }
+        </span>
+      }
+    </div>
+
+    <div class="form-group">
+      <label for="reg-password">Password</label>
+      <input
+        id="reg-password"
+        type="password"
+        formControlName="password"
+        placeholder="At least 8 characters"
+        autocomplete="new-password"
+        [class.invalid]="registerForm.controls.password.invalid && registerForm.controls.password.touched"
+      />
+      @if (registerForm.controls.password.invalid && registerForm.controls.password.touched) {
+        <span class="field-error">
+          @if (registerForm.controls.password.errors?.['required']) { Password is required. }
+          @if (registerForm.controls.password.errors?.['minlength']) { Minimum 8 characters required. }
+        </span>
+      }
+    </div>
+
+    <div class="form-group">
+      <label for="confirmPassword">Confirm Password</label>
+      <input
+        id="confirmPassword"
+        type="password"
+        formControlName="confirmPassword"
+        placeholder="Re-enter password"
+        autocomplete="new-password"
+        [class.invalid]="
+          (registerForm.controls.confirmPassword.invalid && registerForm.controls.confirmPassword.touched) ||
+          (registerForm.hasError('passwordMismatch') && registerForm.controls.confirmPassword.touched)
+        "
+      />
+      @if (registerForm.controls.confirmPassword.touched) {
+        @if (registerForm.controls.confirmPassword.errors?.['required']) {
+          <span class="field-error">Please confirm your password.</span>
+        } @else if (registerForm.hasError('passwordMismatch')) {
+          <span class="field-error">Passwords do not match.</span>
+        }
+      }
+    </div>
+
+    <button type="submit" class="submit-btn" [disabled]="isLoading()">
+      @if (isLoading()) {
+        <span class="btn-spinner"></span>
+        <span>Creating account...</span>
+      } @else {
+        <span>Create Account</span>
+      }
+    </button>
+  </form>
+
+  <div class="auth-footer">
+    <span>Already have an account?</span>
+    <a routerLink="/login" class="auth-link">Sign in</a>
+  </div>
+</div>

@@ -1,0 +1,25 @@
+<div class="status-badge-container">
+  @if (isLoading()) {
+    <div class="status-badge checking">
+      <span class="indicator-dot pulse"></span>
+      <span class="status-text">Checking backend...</span>
+    </div>
+  } @else if (status()?.isConnected) {
+    <div class="status-badge online" title="Last checked: {{ status()?.checkedAt | date:'HH:mm:ss' }}">
+      <span class="indicator-dot online-dot"></span>
+      <span class="status-text">Backend Online</span>
+      <span class="status-pill">ok</span>
+      <button class="refresh-btn" (click)="refresh()" title="Re-check health">
+        &#x21bb;
+      </button>
+    </div>
+  } @else {
+    <div class="status-badge offline" title="{{ status()?.error }}">
+      <span class="indicator-dot offline-dot"></span>
+      <span class="status-text">Backend Offline</span>
+      <button class="retry-btn" (click)="refresh()">
+        Retry
+      </button>
+    </div>
+  }
+</div>

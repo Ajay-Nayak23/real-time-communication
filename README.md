@@ -995,6 +995,8 @@ Tasks:
 * Document frontend startup
 * Document backend startup
 
+See the [Local Development Setup Guide](docs/development_setup.md) for full instructions.
+
 ---
 
 # EPIC 2 — Frontend ↔ Backend
@@ -2123,10 +2125,10 @@ WebRTC
 
 | Ticket  | Status      |
 | ------- | ----------- |
-| RTC-001 | In Progress |
+| RTC-001 | ✅ Done      |
 | RTC-002 | ✅ Done      |
-| RTC-003 | In Progress |
-| RTC-004 | Pending     |
+| RTC-003 | ✅ Done      |
+| RTC-004 | ✅ Done      |
 
 Current environment:
 
