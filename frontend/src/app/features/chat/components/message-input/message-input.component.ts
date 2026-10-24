@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -15,6 +15,7 @@ import { FormsModule } from '@angular/forms';
           name="messageContent"
           placeholder="Type a message... (Press Enter to send, Shift+Enter for new line)"
           rows="1"
+          (input)="onInputChange()"
           (keydown.enter)="onEnterKey($event)"
           [disabled]="disabled"
           aria-label="Message text"
@@ -134,14 +135,40 @@ import { FormsModule } from '@angular/forms';
     }
   `],
 })
-export class MessageInputComponent {
+export class MessageInputComponent implements OnDestroy {
   @Input() disabled = false;
   @Output() messageSent = new EventEmitter<string>();
+  @Output() typingChanged = new EventEmitter<boolean>();
 
   content = '';
+  private isTyping = false;
+  private typingTimer: any = null;
+
+  ngOnDestroy(): void {
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+    }
+  }
 
   get canSubmit(): boolean {
     return this.content.trim().length > 0;
+  }
+
+  onInputChange(): void {
+    if (this.disabled) return;
+
+    if (!this.isTyping) {
+      this.isTyping = true;
+      this.typingChanged.emit(true);
+    }
+
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+    }
+
+    this.typingTimer = setTimeout(() => {
+      this.stopTyping();
+    }, 2500);
   }
 
   onEnterKey(event: Event): void {
@@ -155,8 +182,20 @@ export class MessageInputComponent {
   onSubmit(): void {
     const trimmed = this.content.trim();
     if (trimmed && !this.disabled) {
+      this.stopTyping();
       this.messageSent.emit(trimmed);
       this.content = '';
+    }
+  }
+
+  private stopTyping(): void {
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+      this.typingTimer = null;
+    }
+    if (this.isTyping) {
+      this.isTyping = false;
+      this.typingChanged.emit(false);
     }
   }
 }

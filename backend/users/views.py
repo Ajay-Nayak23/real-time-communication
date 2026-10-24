@@ -148,3 +148,39 @@ class UserDirectoryListView(ListAPIView):
         return queryset
 
 
+class UserPresenceStatusView(APIView):
+    """
+    Endpoint for querying presence status of specific users or all online users.
+    GET /api/users/presence/?user_ids=1,2,3
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from chat.presence import get_online_user_ids, is_user_online
+
+        user_ids_param = request.query_params.get('user_ids', '')
+        if user_ids_param:
+            try:
+                ids = [int(i.strip()) for i in user_ids_param.split(',') if i.strip()]
+            except ValueError:
+                return Response(
+                    {'detail': 'Invalid user_ids parameter.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            users = User.objects.filter(id__in=ids, is_active=True)
+        else:
+            online_ids = get_online_user_ids()
+            users = User.objects.filter(id__in=online_ids, is_active=True)
+
+        results = []
+        for u in users:
+            results.append({
+                'user_id': u.id,
+                'is_online': is_user_online(u.id),
+                'last_seen': u.last_seen.isoformat() if u.last_seen else None,
+            })
+
+        return Response(results, status=status.HTTP_200_OK)
+
+

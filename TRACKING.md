@@ -2,7 +2,7 @@
 
 This file tracks the implementation progress of all 51 GitHub issues across the 11 development milestones.
 
-**Overall Progress:** `21 / 51 completed` (41.2%)
+**Overall Progress:** `25 / 51 completed` (49.0%)
 
 ---
 
@@ -162,12 +162,29 @@ This file tracks the implementation progress of all 51 GitHub issues across the 
 
 ---
 
-## 5. Redis and Presence `(0/4)`
-
-- [ ] **[#22](https://github.com/Ajay-Nayak23/real-time-communication/issues/22)** — `RTC-030`: Configure Redis as Django Channels channel layer for local development
-- [ ] **[#23](https://github.com/Ajay-Nayak23/real-time-communication/issues/23)** — `RTC-016`: Implement real-time online/offline presence tracking and broadcasts
-- [ ] **[#24](https://github.com/Ajay-Nayak23/real-time-communication/issues/24)** — `RTC-023`: Implement real-time typing indicators over WebSocket
-- [ ] **[#25](https://github.com/Ajay-Nayak23/real-time-communication/issues/25)** — `RTC-031`: Validate multi-instance WebSocket horizontal scaling with Redis channel layer
+## 5. Redis and Presence `(4/4)`
+- [x] **[#22](https://github.com/Ajay-Nayak23/real-time-communication/issues/22)** — `RTC-030`: Configure Redis as Django Channels channel layer for local development `(Completed)`
+  > **Useful Details & Verification:**
+  > - Packages: `channels-redis>=4.2.0`, `redis>=5.0.0`
+  > - Dynamic Redis Channel Layer and In-Memory fallback in `backend/commute/settings.py` (`USE_REDIS_CHANNEL_LAYER`, `REDIS_URL`)
+  > - Run channel layer tests: `python backend/manage.py test chat.tests.ChannelLayerConfigurationTests`
+- [x] **[#23](https://github.com/Ajay-Nayak23/real-time-communication/issues/23)** — `RTC-016`: Implement real-time online/offline presence tracking and broadcasts `(Completed)`
+  > **Useful Details & Verification:**
+  > - Backend presence cache manager: `backend/chat/presence.py` (atomic connection count tracking)
+  > - WebSocket endpoint `/ws/presence/` via `PresenceConsumer` in `backend/chat/consumers.py`
+  > - REST API `GET /api/users/presence/?user_ids=...` via `UserPresenceStatusView` in `backend/users/views.py`
+  > - Angular `PresenceService` (`frontend/src/app/core/services/presence.service.ts`) with reactive `onlineUserIds` signal and real-time status dots
+  > - Run presence tests: `python backend/manage.py test chat.tests.UserPresenceAPITests chat.tests.PresenceAndTypingWebSocketTests`
+- [x] **[#24](https://github.com/Ajay-Nayak23/real-time-communication/issues/24)** — `RTC-023`: Implement real-time typing indicators over WebSocket `(Completed)`
+  > **Useful Details & Verification:**
+  > - WebSocket typing broadcast in `ChatConsumer` on `/ws/chat/<conversation_id>/`
+  > - Angular `MessageInputComponent` debouncing (2.5s auto-stop) and `ChatService.typingUser` signal
+  > - Modern pulsing dot indicators in `MessageWindowComponent` header and message stream
+  > - Run typing tests: `python backend/manage.py test chat.tests.PresenceAndTypingWebSocketTests`
+- [x] **[#25](https://github.com/Ajay-Nayak23/real-time-communication/issues/25)** — `RTC-031`: Validate multi-instance WebSocket horizontal scaling with Redis channel layer `(Completed)`
+  > **Useful Details & Verification:**
+  > - Validated cross-instance pub/sub delivery across independent consumer channels on shared groups
+  > - Run scaling test: `python backend/manage.py test chat.tests.MultiInstanceWebSocketScalingTests`
 
 ---
 

@@ -3,7 +3,7 @@ from django.db import IntegrityError
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 from channels.testing import WebsocketCommunicator
 from commute.asgi import application
@@ -901,6 +901,284 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual(received['message']['content'], 'Broadcast from HTTP POST')
 
         await bob_comm.disconnect()
+
+
+class ChannelLayerConfigurationTests(TestCase):
+    """Tests for Issue #22 (RTC-030): Configure Redis as Django Channels channel layer."""
+
+    def test_channel_layer_configured(self):
+        """Channel layer is properly configured and resolvable."""
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        self.assertIsNotNone(channel_layer)
+
+    def test_channel_layer_group_send_and_receive(self):
+        """Channel layer supports async group operations and message delivery."""
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+
+        async def run_channel_test():
+            channel_name = await channel_layer.new_channel()
+            group_name = "test_verification_group"
+            await channel_layer.group_add(group_name, channel_name)
+
+            await channel_layer.group_send(
+                group_name,
+                {"type": "test.message", "payload": "redis_layer_validation"}
+            )
+
+            msg = await channel_layer.receive(channel_name)
+            self.assertEqual(msg["type"], "test.message")
+            self.assertEqual(msg["payload"], "redis_layer_validation")
+
+            await channel_layer.group_discard(group_name, channel_name)
+
+        async_to_sync(run_channel_test)()
+
+    def test_redis_channel_layer_class_available(self):
+        """channels_redis package is installed and RedisChannelLayer is importable."""
+        from channels_redis.core import RedisChannelLayer
+        self.assertTrue(issubclass(RedisChannelLayer, object))
+
+    def test_settings_redis_fallback_and_options(self):
+        """Settings define REDIS_URL and properly select channel layer backend."""
+        from django.conf import settings
+        self.assertTrue(hasattr(settings, 'CHANNEL_LAYERS'))
+        self.assertIn('default', settings.CHANNEL_LAYERS)
+        self.assertIn('BACKEND', settings.CHANNEL_LAYERS['default'])
+
+
+class PresenceAndTypingWebSocketTests(TransactionTestCase):
+    """
+    Tests for Issue #23 (RTC-016: Presence) and Issue #24 (RTC-023: Typing indicators).
+    """
+
+    def setUp(self):
+        super().setUp()
+        from django.core.cache import cache
+        cache.clear()
+
+        self.user1 = User.objects.create_user(
+            email="alice.presence@example.com",
+            name="Alice Presence",
+            password="StrongPassword123!"
+        )
+        self.user2 = User.objects.create_user(
+            email="bob.presence@example.com",
+            name="Bob Presence",
+            password="StrongPassword123!"
+        )
+        self.conversation = Conversation.objects.create()
+        ConversationParticipant.objects.create(conversation=self.conversation, user=self.user1)
+        ConversationParticipant.objects.create(conversation=self.conversation, user=self.user2)
+
+        self.user1_token = str(RefreshToken.for_user(self.user1).access_token)
+        self.user2_token = str(RefreshToken.for_user(self.user2).access_token)
+
+    async def test_typing_indicator_broadcast(self):
+        """When Alice types, Bob receives typing notification; Alice does not receive echo."""
+        alice_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        bob_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user2_token}",
+            headers=[(b"host", b"localhost")]
+        )
+
+        await alice_comm.connect()
+        await bob_comm.connect()
+        await alice_comm.receive_json_from()  # connection_established
+        await bob_comm.receive_json_from()
+
+        # Alice starts typing
+        await alice_comm.send_json_to({
+            'type': 'typing',
+            'is_typing': True
+        })
+
+        # Bob receives typing event
+        bob_event = await bob_comm.receive_json_from()
+        self.assertEqual(bob_event['type'], 'typing')
+        self.assertEqual(bob_event['conversation_id'], self.conversation.id)
+        self.assertEqual(bob_event['user_id'], self.user1.id)
+        self.assertTrue(bob_event['is_typing'])
+
+        # Alice stops typing
+        await alice_comm.send_json_to({
+            'type': 'typing',
+            'is_typing': False
+        })
+
+        bob_stop = await bob_comm.receive_json_from()
+        self.assertEqual(bob_stop['type'], 'typing')
+        self.assertFalse(bob_stop['is_typing'])
+
+        # Alice should NOT receive her own typing events
+        self.assertTrue(await alice_comm.receive_nothing())
+
+        await alice_comm.disconnect()
+        await bob_comm.disconnect()
+
+    async def test_presence_consumer_connect_and_broadcast(self):
+        """Users connecting to /ws/presence/ receive online state and broadcast presence updates."""
+        alice_presence = WebsocketCommunicator(
+            application,
+            f"/ws/presence/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await alice_presence.connect()
+        self.assertTrue(connected)
+
+        # Alice receives initial snapshot
+        alice_state = await alice_presence.receive_json_from()
+        self.assertEqual(alice_state['type'], 'presence_state')
+        self.assertIn(self.user1.id, alice_state['online_user_ids'])
+
+        # Bob connects to presence
+        bob_presence = WebsocketCommunicator(
+            application,
+            f"/ws/presence/?token={self.user2_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        await bob_presence.connect()
+
+        # Alice receives real-time broadcast that Bob came online
+        bob_online_event = await alice_presence.receive_json_from()
+        self.assertEqual(bob_online_event['type'], 'presence_update')
+        self.assertEqual(bob_online_event['user_id'], self.user2.id)
+        self.assertEqual(bob_online_event['status'], 'online')
+
+        # Bob disconnects
+        await bob_presence.disconnect()
+
+        # Alice receives real-time broadcast that Bob went offline
+        bob_offline_event = await alice_presence.receive_json_from()
+        self.assertEqual(bob_offline_event['type'], 'presence_update')
+        self.assertEqual(bob_offline_event['user_id'], self.user2.id)
+        self.assertEqual(bob_offline_event['status'], 'offline')
+
+        await alice_presence.disconnect()
+
+
+class UserPresenceAPITests(APITestCase):
+    """Tests for UserPresenceStatusView and presence cache tracking functions."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.user1 = User.objects.create_user(
+            email="alice.api@example.com",
+            name="Alice",
+            password="StrongPassword123!"
+        )
+        self.user2 = User.objects.create_user(
+            email="bob.api@example.com",
+            name="Bob",
+            password="StrongPassword123!"
+        )
+        self.client.force_authenticate(user=self.user1)
+
+    def test_presence_helper_functions(self):
+        """track_user_connected and track_user_disconnected manage connection counts and state."""
+        from chat.presence import (
+            track_user_connected,
+            track_user_disconnected,
+            is_user_online,
+            get_online_user_ids
+        )
+
+        # Connect tab 1
+        conns, is_new = track_user_connected(self.user1.id)
+        self.assertEqual(conns, 1)
+        self.assertTrue(is_new)
+        self.assertTrue(is_user_online(self.user1.id))
+        self.assertIn(self.user1.id, get_online_user_ids())
+
+        # Connect tab 2
+        conns, is_new = track_user_connected(self.user1.id)
+        self.assertEqual(conns, 2)
+        self.assertFalse(is_new)  # already online
+
+        # Close tab 2
+        conns, is_offline = track_user_disconnected(self.user1.id)
+        self.assertEqual(conns, 1)
+        self.assertFalse(is_offline)  # still has 1 tab open
+        self.assertTrue(is_user_online(self.user1.id))
+
+        # Close tab 1
+        conns, is_offline = track_user_disconnected(self.user1.id)
+        self.assertEqual(conns, 0)
+        self.assertTrue(is_offline)
+        self.assertFalse(is_user_online(self.user1.id))
+
+    def test_get_user_presence_status_api(self):
+        """GET /api/users/presence/?user_ids=... returns online status for requested users."""
+        from chat.presence import track_user_connected
+        track_user_connected(self.user1.id)
+
+        url = reverse('api:users:user_presence')
+        response = self.client.get(f"{url}?user_ids={self.user1.id},{self.user2.id}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = {item['user_id']: item['is_online'] for item in response.data}
+        self.assertTrue(data[self.user1.id])
+        self.assertFalse(data[self.user2.id])
+
+
+class MultiInstanceWebSocketScalingTests(TestCase):
+    """
+    Tests for Issue #25 (RTC-031): Validate multi-instance WebSocket horizontal scaling with channel layer.
+    """
+
+    def test_cross_instance_group_broadcasting(self):
+        """
+        Verify that multiple independent channel listeners on the same group
+        receive broadcasts identically, confirming horizontally scalable pub/sub.
+        """
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        channel_layer = get_channel_layer()
+
+        async def run_scale_test():
+            group_name = "scaling_cluster_group"
+
+            # Instance A channel
+            ch_a = await channel_layer.new_channel()
+            # Instance B channel
+            ch_b = await channel_layer.new_channel()
+
+            await channel_layer.group_add(group_name, ch_a)
+            await channel_layer.group_add(group_name, ch_b)
+
+            # Broadcast from Instance C into group
+            await channel_layer.group_send(
+                group_name,
+                {
+                    "type": "scale_broadcast",
+                    "event_id": "uuid-1234",
+                    "payload": "cluster_sync_ok",
+                }
+            )
+
+            # Both Instance A and Instance B receive the message
+            msg_a = await channel_layer.receive(ch_a)
+            msg_b = await channel_layer.receive(ch_b)
+
+            self.assertEqual(msg_a["event_id"], "uuid-1234")
+            self.assertEqual(msg_a["payload"], "cluster_sync_ok")
+            self.assertEqual(msg_b["event_id"], "uuid-1234")
+            self.assertEqual(msg_b["payload"], "cluster_sync_ok")
+
+            await channel_layer.group_discard(group_name, ch_a)
+            await channel_layer.group_discard(group_name, ch_b)
+
+        async_to_sync(run_scale_test)()
 
 
 

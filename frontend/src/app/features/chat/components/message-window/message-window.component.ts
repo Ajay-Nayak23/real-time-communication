@@ -53,9 +53,18 @@ import { User } from '../../../../core/models/user.model';
 
           <div class="header-text">
             <h3 class="header-name">{{ getDisplayName(conversation?.other_participant) }}</h3>
-            <span class="header-status">
-              {{ isOnline(conversation?.other_participant) ? 'Online' : 'Offline' }}
-            </span>
+            @if (typingUser) {
+              <span class="header-status typing">
+                <span class="typing-indicator-dots">
+                  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                </span>
+                {{ typingUser }} is typing...
+              </span>
+            } @else {
+              <span class="header-status">
+                {{ isOnline(conversation?.other_participant) ? 'Online' : 'Offline' }}
+              </span>
+            }
           </div>
         </div>
       </header>
@@ -120,6 +129,16 @@ import { User } from '../../../../core/models/user.model';
                       }
                     </div>
                   </div>
+                </div>
+              </div>
+            }
+
+            @if (typingUser) {
+              <div class="message-row incoming typing-bubble-row">
+                <div class="typing-bubble">
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
                 </div>
               </div>
             }
@@ -228,6 +247,59 @@ import { User } from '../../../../core/models/user.model';
     .header-status {
       font-size: 0.775rem;
       color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+
+      &.typing {
+        color: #60a5fa;
+        font-weight: 500;
+      }
+    }
+
+    .typing-indicator-dots,
+    .typing-bubble {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .typing-bubble {
+      padding: 0.6rem 0.85rem;
+      background: rgba(30, 41, 59, 0.7);
+      border-radius: 14px;
+      border-bottom-left-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      width: fit-content;
+      margin-left: 2rem;
+      margin-top: 0.25rem;
+    }
+
+    .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #60a5fa;
+      animation: typingPulse 1.2s infinite ease-in-out;
+    }
+
+    .dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typingPulse {
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+      30% {
+        transform: translateY(-4px);
+        opacity: 1;
+      }
     }
 
     .messages-viewport {
@@ -405,6 +477,8 @@ export class MessageWindowComponent implements OnChanges, AfterViewInit {
   @Input() currentUserId: number | null = null;
   @Input() loading = false;
   @Input() showBackButton = false;
+  @Input() typingUser: string | null = null;
+  @Input() isPartnerOnline = false;
   @Output() backClicked = new EventEmitter<void>();
 
   @ViewChild('messagesViewport') private messagesViewport!: ElementRef<HTMLDivElement>;
@@ -457,9 +531,10 @@ export class MessageWindowComponent implements OnChanges, AfterViewInit {
   }
 
   isOnline(user?: User | null): boolean {
+    if (this.isPartnerOnline) return true;
     if (!user || !user.last_seen) return false;
     const seenTime = new Date(user.last_seen).getTime();
-    return Date.now() - seenTime < 5 * 60 * 1000;
+    return Date.now() - seenTime < 3 * 60 * 1000;
   }
 
   formatTime(isoDate?: string): string {

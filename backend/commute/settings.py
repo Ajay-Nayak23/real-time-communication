@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -81,11 +82,43 @@ TEMPLATES = [
 WSGI_APPLICATION = 'commute.wsgi.application'
 ASGI_APPLICATION = 'commute.asgi.application'
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    },
-}
+# Redis and Channel Layer Settings
+REDIS_URL = os.environ.get('REDIS_URL', '')
+USE_REDIS_CHANNEL_LAYER = os.environ.get(
+    'USE_REDIS_CHANNEL_LAYER',
+    'true' if REDIS_URL else 'false'
+).lower() in ('true', '1', 'yes')
+
+if USE_REDIS_CHANNEL_LAYER:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [REDIS_URL or 'redis://127.0.0.1:6379/1'],
+            },
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+
+# Cache Configuration
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 
 
 # Database

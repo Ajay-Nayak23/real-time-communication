@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 import { ChatService } from '../../core/services/chat.service';
+import { PresenceService } from '../../core/services/presence.service';
 import { UserService } from '../../core/services/user.service';
 import { Conversation } from '../../core/models/chat.model';
 import { User } from '../../core/models/user.model';
@@ -27,6 +28,7 @@ import { MessageInputComponent } from './components/message-input/message-input.
         <app-conversation-list
           [conversations]="chatService.conversations()"
           [selectedId]="chatService.activeConversation()?.id || null"
+          [onlineUserIds]="presenceService.onlineUserIds()"
           (conversationSelected)="onSelectConversation($event)"
           (newChatClicked)="openNewChatModal()"
         ></app-conversation-list>
@@ -42,12 +44,15 @@ import { MessageInputComponent } from './components/message-input/message-input.
               [currentUserId]="authService.currentUser()?.id || null"
               [loading]="chatService.loadingMessages()"
               [showBackButton]="true"
+              [isPartnerOnline]="presenceService.isUserOnline(activeConv.other_participant?.id)"
+              [typingUser]="chatService.typingUser()"
               (backClicked)="closeMobileThread()"
             ></app-message-window>
 
             <app-message-input
               [disabled]="chatService.sendingMessage()"
               (messageSent)="onSendMessage($event)"
+              (typingChanged)="chatService.sendTyping($event)"
             ></app-message-input>
           </div>
         } @else {
@@ -344,6 +349,7 @@ export class ChatComponent implements OnInit {
   readonly authService = inject(AuthService);
   readonly chatService = inject(ChatService);
   readonly userService = inject(UserService);
+  readonly presenceService = inject(PresenceService);
 
   mobileThreadOpen = signal<boolean>(false);
   showNewChatModal = signal<boolean>(false);
@@ -352,6 +358,7 @@ export class ChatComponent implements OnInit {
   userSearchQuery = '';
 
   ngOnInit(): void {
+    this.presenceService.connect();
     this.chatService.loadConversations().subscribe();
   }
 

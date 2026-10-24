@@ -53,3 +53,22 @@ export interface MessageHistoryResponse {
   previous: string | null;
   results: Message[];
 }
+
+export interface TypingIndicator {
+  conversation_id: number;
+  user_id: number;
+  user_name?: string;
+  is_typing: boolean;
+}
+
+export interface PresenceUpdate {
+  user_id: number;
+  status: 'online' | 'offline';
+  last_seen?: string | null;
+}
+
+export interface UserPresenceStatus {
+  user_id: number;
+  is_online: boolean;
+  last_seen?: string | null;
+}

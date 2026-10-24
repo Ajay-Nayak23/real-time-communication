@@ -10,6 +10,7 @@ import {
   Message,
   MessageHistoryResponse,
   SendMessageRequest,
+  TypingIndicator,
 } from '../models/chat.model';
 
 @Injectable({
@@ -31,10 +32,12 @@ export class ChatService implements OnDestroy {
   readonly sendingMessage = signal<boolean>(false);
   readonly error = signal<string | null>(null);
   readonly socketConnected = signal<boolean>(false);
+  readonly typingUser = signal<string | null>(null);
 
   // Active WebSocket reference & reconnect timer
   private socket: WebSocket | null = null;
   private reconnectTimer: any = null;
+  private typingTimeout: any = null;
   private shouldReconnect = true;
 
   ngOnDestroy(): void {
@@ -271,6 +274,8 @@ export class ChatService implements OnDestroy {
             this.handleIncomingMessage(data.message);
           } else if (data.type === 'messages_read' || data.type === 'chat_messages_read') {
             this.handleMessagesRead(data);
+          } else if (data.type === 'typing') {
+            this.handleTypingEvent(data);
           } else if (data.type === 'connection_established') {
             this.socketConnected.set(true);
           }
@@ -311,6 +316,11 @@ export class ChatService implements OnDestroy {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+      this.typingTimeout = null;
+    }
+    this.typingUser.set(null);
     if (this.socket) {
       try {
         this.socket.close();
@@ -441,6 +451,48 @@ export class ChatService implements OnDestroy {
       }
       return convList;
     });
+  }
+
+  /**
+   * Send typing indicator event over active WebSocket connection.
+   */
+  sendTyping(isTyping: boolean): void {
+    if (this.isSocketOpen()) {
+      try {
+        this.socket!.send(
+          JSON.stringify({
+            type: 'typing',
+            is_typing: isTyping,
+          })
+        );
+      } catch {
+        // ignore send failure
+      }
+    }
+  }
+
+  /**
+   * Process typing indicator received from conversation peer.
+   */
+  handleTypingEvent(data: TypingIndicator): void {
+    const currentActiveId = Number(this.activeConversation()?.id);
+    if (currentActiveId === Number(data.conversation_id)) {
+      if (data.is_typing) {
+        this.typingUser.set(data.user_name || 'Someone');
+        if (this.typingTimeout) {
+          clearTimeout(this.typingTimeout);
+        }
+        this.typingTimeout = setTimeout(() => {
+          this.typingUser.set(null);
+        }, 3500);
+      } else {
+        if (this.typingTimeout) {
+          clearTimeout(this.typingTimeout);
+          this.typingTimeout = null;
+        }
+        this.typingUser.set(null);
+      }
+    }
   }
 }
 

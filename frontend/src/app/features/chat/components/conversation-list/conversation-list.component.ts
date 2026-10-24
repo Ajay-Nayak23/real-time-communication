@@ -350,6 +350,7 @@ import { User } from '../../../../core/models/user.model';
 export class ConversationListComponent {
   @Input() conversations: Conversation[] = [];
   @Input() selectedId: number | null = null;
+  @Input() onlineUserIds: Set<number> = new Set();
   @Output() conversationSelected = new EventEmitter<Conversation>();
   @Output() newChatClicked = new EventEmitter<void>();
 
@@ -394,10 +395,13 @@ export class ConversationListComponent {
   }
 
   isOnline(user?: User | null): boolean {
-    if (!user || !user.last_seen) return false;
-    // Consider online if seen within last 5 minutes
+    if (!user) return false;
+    if (this.onlineUserIds && this.onlineUserIds.has(Number(user.id))) {
+      return true;
+    }
+    if (!user.last_seen) return false;
     const seenTime = new Date(user.last_seen).getTime();
-    return Date.now() - seenTime < 5 * 60 * 1000;
+    return Date.now() - seenTime < 3 * 60 * 1000;
   }
 
   formatTime(isoDate?: string): string {

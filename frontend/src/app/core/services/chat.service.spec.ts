@@ -228,4 +228,36 @@ describe('ChatService', () => {
     service.disconnectWebSocket();
     expect(service.socketConnected()).toBe(false);
   });
+
+  it('should handle typing indicator events for active conversation', () => {
+    service.activeConversation.set(mockConversations[0]);
+    expect(service.typingUser()).toBeNull();
+
+    service.handleTypingEvent({
+      conversation_id: 1,
+      user_id: 2,
+      user_name: 'Bob',
+      is_typing: true,
+    });
+    expect(service.typingUser()).toBe('Bob');
+
+    service.handleTypingEvent({
+      conversation_id: 1,
+      user_id: 2,
+      user_name: 'Bob',
+      is_typing: false,
+    });
+    expect(service.typingUser()).toBeNull();
+  });
+
+  it('should ignore typing indicator events for other conversations', () => {
+    service.activeConversation.set(mockConversations[0]); // id = 1
+    service.handleTypingEvent({
+      conversation_id: 999,
+      user_id: 2,
+      user_name: 'Bob',
+      is_typing: true,
+    });
+    expect(service.typingUser()).toBeNull();
+  });
 });
