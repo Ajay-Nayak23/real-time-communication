@@ -12,6 +12,7 @@ export interface MessageSummary {
   sender_name: string;
   content: string;
   is_read: boolean;
+  read_at?: string | null;
   created_at: string;
 }
 
@@ -31,6 +32,7 @@ export interface Message {
   sender: User;
   content: string;
   is_read: boolean;
+  read_at?: string | null;
   is_deleted?: boolean;
   created_at: string;
   updated_at: string;

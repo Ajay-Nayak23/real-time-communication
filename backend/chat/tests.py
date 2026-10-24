@@ -1,9 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+from channels.testing import WebsocketCommunicator
+from commute.asgi import application
 from chat.models import Conversation, ConversationParticipant, Message
 
 User = get_user_model()
@@ -546,3 +549,358 @@ class MessageHistoryAPITests(TestCase):
         returned_ids = [m['id'] for m in response.data['results']]
         self.assertIn(active_msg.id, returned_ids)
         self.assertNotIn(deleted_msg.id, returned_ids)
+
+
+class ConversationMarkReadAPITests(TestCase):
+    """
+    Integration tests for Mark Messages Read REST API (RTC-022).
+    - POST /api/chat/conversations/<id>/read/
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user1 = User.objects.create_user(
+            email='alice.read@example.com',
+            password='Password123!',
+            name='Alice Read'
+        )
+        self.user2 = User.objects.create_user(
+            email='bob.read@example.com',
+            password='Password123!',
+            name='Bob Read'
+        )
+        self.user3 = User.objects.create_user(
+            email='charlie.read@example.com',
+            password='Password123!',
+            name='Charlie Read'
+        )
+
+        self.conversation = Conversation.objects.create()
+        self.part1 = ConversationParticipant.objects.create(conversation=self.conversation, user=self.user1)
+        self.part2 = ConversationParticipant.objects.create(conversation=self.conversation, user=self.user2)
+
+        self.read_url = reverse('api:chat:conversation_mark_read', kwargs={'conversation_id': self.conversation.id})
+
+    def test_unauthenticated_mark_read_blocked(self):
+        """Unauthenticated requests receive 401 Unauthorized."""
+        response = self.client.post(self.read_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_non_participant_mark_read_forbidden(self):
+        """Non-participant receives 403 Forbidden."""
+        self.client.force_authenticate(user=self.user3)
+        response = self.client.post(self.read_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_mark_messages_as_read_success(self):
+        """Participant marks incoming unread messages as read."""
+        msg1 = Message.objects.create(conversation=self.conversation, sender=self.user2, content="Msg 1")
+        msg2 = Message.objects.create(conversation=self.conversation, sender=self.user2, content="Msg 2")
+        self.assertFalse(msg1.is_read)
+        self.assertFalse(msg2.is_read)
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.post(self.read_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'success')
+        self.assertEqual(response.data['read_count'], 2)
+        self.assertEqual(response.data['unread_count'], 0)
+
+        msg1.refresh_from_db()
+        msg2.refresh_from_db()
+        self.assertTrue(msg1.is_read)
+        self.assertTrue(msg2.is_read)
+        self.assertIsNotNone(msg1.read_at)
+        self.assertIsNotNone(msg2.read_at)
+
+        self.part1.refresh_from_db()
+        self.assertIsNotNone(self.part1.last_read_at)
+
+    def test_mark_read_does_not_affect_own_messages(self):
+        """Marking read only updates messages sent by other participants."""
+        own_msg = Message.objects.create(conversation=self.conversation, sender=self.user1, content="My own message")
+        peer_msg = Message.objects.create(conversation=self.conversation, sender=self.user2, content="Peer message")
+
+        self.client.force_authenticate(user=self.user1)
+        response = self.client.post(self.read_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['read_count'], 1)
+
+        own_msg.refresh_from_db()
+        peer_msg.refresh_from_db()
+        self.assertFalse(own_msg.is_read)
+        self.assertTrue(peer_msg.is_read)
+
+
+class ChatConsumerTests(TransactionTestCase):
+    """
+    Automated integration tests for Django Channels ChatConsumer WebSocket endpoint (RTC-021).
+    Endpoint: /ws/chat/<conversation_id>/?token=<JWT_ACCESS_TOKEN>
+    """
+
+    def setUp(self):
+        self.user1 = User.objects.create_user(
+            email='alice.ws@example.com',
+            password='Password123!',
+            name='Alice WS'
+        )
+        self.user2 = User.objects.create_user(
+            email='bob.ws@example.com',
+            password='Password123!',
+            name='Bob WS'
+        )
+        self.user3 = User.objects.create_user(
+            email='charlie.ws@example.com',
+            password='Password123!',
+            name='Charlie WS'
+        )
+
+        self.conversation = Conversation.objects.create()
+        ConversationParticipant.objects.create(conversation=self.conversation, user=self.user1)
+        ConversationParticipant.objects.create(conversation=self.conversation, user=self.user2)
+
+        self.user1_token = str(RefreshToken.for_user(self.user1).access_token)
+        self.user2_token = str(RefreshToken.for_user(self.user2).access_token)
+        self.user3_token = str(RefreshToken.for_user(self.user3).access_token)
+
+    async def test_connect_authenticated_participant_success(self):
+        """Authenticated conversation participant successfully connects and receives handshake."""
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+
+        response = await communicator.receive_json_from()
+        self.assertEqual(response.get('type'), 'connection_established')
+        self.assertEqual(response.get('conversation_id'), self.conversation.id)
+        self.assertEqual(response.get('user_id'), self.user1.id)
+
+        await communicator.disconnect()
+
+    async def test_connect_unauthenticated_rejected(self):
+        """Unauthenticated WebSocket connection is immediately closed/rejected."""
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+        await communicator.disconnect()
+
+    async def test_connect_invalid_token_rejected(self):
+        """Connection with invalid token is rejected."""
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token=invalid.jwt.token",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+        await communicator.disconnect()
+
+    async def test_connect_non_participant_rejected(self):
+        """User who is not a participant in the conversation is rejected."""
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user3_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await communicator.connect()
+        self.assertFalse(connected)
+        await communicator.disconnect()
+
+    async def test_send_message_persists_to_db_and_broadcasts(self):
+        """Sending a message via WebSocket persists the record in DB and broadcasts it."""
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+
+        # Receive handshake confirmation
+        handshake = await communicator.receive_json_from()
+        self.assertEqual(handshake['type'], 'connection_established')
+
+        # Send chat message
+        await communicator.send_json_to({
+            'type': 'chat_message',
+            'content': 'Hello from WebSocket test!'
+        })
+
+        # Receive broadcast message
+        broadcast = await communicator.receive_json_from()
+        self.assertEqual(broadcast['type'], 'chat_message')
+        self.assertEqual(broadcast['message']['content'], 'Hello from WebSocket test!')
+        self.assertEqual(broadcast['message']['sender']['id'], self.user1.id)
+        self.assertEqual(broadcast['message']['conversation_id'], self.conversation.id)
+
+        # Verify message persisted in database
+        saved_msg = await Message.objects.filter(
+            conversation=self.conversation, content='Hello from WebSocket test!'
+        ).afirst()
+        self.assertIsNotNone(saved_msg)
+        self.assertEqual(saved_msg.sender_id, self.user1.id)
+
+        await communicator.disconnect()
+
+    async def test_bidirectional_messaging_between_participants(self):
+        """Both Alice and Bob connect to the same conversation and exchange real-time messages."""
+        alice_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        bob_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user2_token}",
+            headers=[(b"host", b"localhost")]
+        )
+
+        alice_conn, _ = await alice_comm.connect()
+        bob_conn, _ = await bob_comm.connect()
+        self.assertTrue(alice_conn)
+        self.assertTrue(bob_conn)
+
+        # Discard handshake payloads
+        await alice_comm.receive_json_from()
+        await bob_comm.receive_json_from()
+
+        # Alice sends message
+        await alice_comm.send_json_to({
+            'type': 'chat_message',
+            'content': 'Hi Bob, how are you?'
+        })
+
+        # Both receive Alice's message in real time
+        alice_recv = await alice_comm.receive_json_from()
+        bob_recv = await bob_comm.receive_json_from()
+
+        self.assertEqual(alice_recv['message']['content'], 'Hi Bob, how are you?')
+        self.assertEqual(bob_recv['message']['content'], 'Hi Bob, how are you?')
+        self.assertEqual(bob_recv['message']['sender']['id'], self.user1.id)
+
+        # Bob replies to Alice
+        await bob_comm.send_json_to({
+            'type': 'chat_message',
+            'content': 'Doing great Alice!'
+        })
+
+        alice_reply = await alice_comm.receive_json_from()
+        bob_reply = await bob_comm.receive_json_from()
+
+        self.assertEqual(alice_reply['message']['content'], 'Doing great Alice!')
+        self.assertEqual(bob_reply['message']['content'], 'Doing great Alice!')
+        self.assertEqual(alice_reply['message']['sender']['id'], self.user2.id)
+
+        await alice_comm.disconnect()
+        await bob_comm.disconnect()
+
+    async def test_empty_message_validation_error(self):
+        """Sending empty message returns error without saving."""
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        await communicator.receive_json_from()
+
+        # Send blank message
+        await communicator.send_json_to({
+            'type': 'chat_message',
+            'content': '   '
+        })
+
+        err_response = await communicator.receive_json_from()
+        self.assertEqual(err_response['type'], 'error')
+        self.assertIn('cannot be blank', err_response['message'])
+
+        await communicator.disconnect()
+
+    async def test_websocket_mark_messages_read_broadcast(self):
+        """Sending mark_read over WebSocket updates database and broadcasts to group."""
+        msg = await Message.objects.acreate(
+            conversation=self.conversation,
+            sender=self.user2,
+            content='Unread peer message'
+        )
+
+        alice_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user1_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        bob_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user2_token}",
+            headers=[(b"host", b"localhost")]
+        )
+
+        await alice_comm.connect()
+        await bob_comm.connect()
+        await alice_comm.receive_json_from()
+        await bob_comm.receive_json_from()
+
+        # Alice marks messages read
+        await alice_comm.send_json_to({'type': 'mark_read'})
+
+        # Bob receives read receipt
+        bob_event = await bob_comm.receive_json_from()
+        self.assertEqual(bob_event['type'], 'messages_read')
+        self.assertEqual(bob_event['conversation_id'], self.conversation.id)
+        self.assertEqual(bob_event['reader_id'], self.user1.id)
+        self.assertEqual(bob_event['read_count'], 1)
+
+        refetched_msg = await Message.objects.aget(id=msg.id)
+        self.assertTrue(refetched_msg.is_read)
+        self.assertIsNotNone(refetched_msg.read_at)
+
+        await alice_comm.disconnect()
+        await bob_comm.disconnect()
+
+    async def test_http_post_message_broadcasts_to_connected_websocket(self):
+        """Messages created via REST HTTP POST are broadcast to connected WebSocket clients."""
+        bob_comm = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{self.conversation.id}/?token={self.user2_token}",
+            headers=[(b"host", b"localhost")]
+        )
+        connected, _ = await bob_comm.connect()
+        self.assertTrue(connected)
+        await bob_comm.receive_json_from()  # connection_established
+
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f"chat_{self.conversation.id}",
+            {
+                "type": "chat_message_broadcast",
+                "message": {
+                    "id": 101,
+                    "conversation_id": self.conversation.id,
+                    "sender": {"id": self.user1.id, "name": self.user1.name},
+                    "content": "Broadcast from HTTP POST",
+                    "created_at": "2026-10-25T01:40:00Z",
+                    "is_read": False,
+                }
+            }
+        )
+
+        # Bob receives it over WebSocket
+        received = await bob_comm.receive_json_from()
+        self.assertEqual(received['type'], 'chat_message')
+        self.assertEqual(received['message']['content'], 'Broadcast from HTTP POST')
+
+        await bob_comm.disconnect()
+
+
+

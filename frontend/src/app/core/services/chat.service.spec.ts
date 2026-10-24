@@ -123,13 +123,109 @@ describe('ChatService', () => {
     expect(service.conversations()[0].last_message?.content).toBe('Hi Bob!');
   });
 
-  it('should select active conversation and load its messages', () => {
+  it('should select active conversation, load messages, and mark as read', () => {
+    service.conversations.set(mockConversations);
     service.selectConversation(mockConversations[0]);
     expect(service.activeConversation()?.id).toBe(1);
 
-    const req = httpMock.expectOne(
+    const msgReq = httpMock.expectOne(
       (r) => r.url === `${environment.apiUrl}/chat/conversations/1/messages/`
     );
-    req.flush({ next: null, previous: null, results: mockMessages });
+    msgReq.flush({ next: null, previous: null, results: mockMessages });
+
+    const readReq = httpMock.expectOne(`${environment.apiUrl}/chat/conversations/1/read/`);
+    expect(readReq.request.method).toBe('POST');
+    readReq.flush({ status: 'success', conversation_id: 1, read_count: 1 });
+
+    expect(service.conversations()[0].unread_count).toBe(0);
+  });
+
+  it('should mark conversation as read explicitly', () => {
+    service.conversations.set([{ ...mockConversations[0], unread_count: 5 }]);
+    service.markConversationAsRead(1).subscribe((res) => {
+      expect(res.read_count).toBe(5);
+    });
+
+    expect(service.conversations()[0].unread_count).toBe(0);
+
+    const req = httpMock.expectOne(`${environment.apiUrl}/chat/conversations/1/read/`);
+    expect(req.request.method).toBe('POST');
+    req.flush({ status: 'success', conversation_id: 1, read_count: 5 });
+  });
+
+  it('should increment unread badge when message arrives for inactive conversation', () => {
+    service.conversations.set([{ ...mockConversations[0], unread_count: 0 }]);
+    service.activeConversation.set(null); // No conversation active
+
+    const incoming: Message = {
+      id: 50,
+      conversation_id: 1,
+      sender: mockUser2,
+      content: 'New unread message',
+      is_read: false,
+      created_at: '2026-10-24T18:20:00Z',
+      updated_at: '2026-10-24T18:20:00Z',
+    };
+
+    service.handleIncomingMessage(incoming);
+    expect(service.conversations()[0].unread_count).toBe(1);
+    expect(service.conversations()[0].last_message?.content).toBe('New unread message');
+  });
+
+  it('should update read receipts when messages_read event is received', () => {
+    service.activeConversation.set(mockConversations[0]);
+    service.messages.set([
+      {
+        id: 10,
+        conversation_id: 1,
+        sender: mockUser1,
+        content: 'Delivered but not read',
+        is_read: false,
+        created_at: '2026-10-24T18:20:00Z',
+        updated_at: '2026-10-24T18:20:00Z',
+      },
+    ]);
+
+    service.handleMessagesRead({
+      conversation_id: 1,
+      reader_id: 2,
+      read_at: '2026-10-24T18:22:00Z',
+      read_count: 1,
+    });
+
+    expect(service.messages()[0].is_read).toBe(true);
+    expect(service.messages()[0].read_at).toBe('2026-10-24T18:22:00Z');
+  });
+
+  it('should handle incoming message and deduplicate in message timeline', () => {
+    service.conversations.set(mockConversations);
+    service.messages.set(mockMessages);
+
+    const duplicateMsg: Message = { ...mockMessages[0] };
+    service.handleIncomingMessage(duplicateMsg);
+    // Should still have length 1 because of deduplication
+    expect(service.messages().length).toBe(1);
+
+    const brandNewMsg: Message = {
+      id: 99,
+      conversation_id: 1,
+      sender: mockUser2,
+      content: 'Realtime update',
+      is_read: false,
+      created_at: '2026-10-24T18:10:00Z',
+      updated_at: '2026-10-24T18:10:00Z',
+    };
+    service.handleIncomingMessage(brandNewMsg);
+    expect(service.messages().length).toBe(2);
+    expect(service.messages()[1].id).toBe(99);
+    expect(service.conversations()[0].last_message?.content).toBe('Realtime update');
+  });
+
+  it('should properly track and disconnect websocket', () => {
+    expect(service.socketConnected()).toBe(false);
+    expect(service.isSocketOpen()).toBe(false);
+
+    service.disconnectWebSocket();
+    expect(service.socketConnected()).toBe(false);
   });
 });

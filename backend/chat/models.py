@@ -43,6 +43,7 @@ class ConversationParticipant(models.Model):
         db_index=True,
     )
     joined_at = models.DateTimeField(auto_now_add=True)
+    last_read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'chat_conversation_participants'
@@ -83,6 +84,7 @@ class Message(models.Model):
     )
     content = models.TextField()
     is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)

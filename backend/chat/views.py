@@ -1,5 +1,8 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
@@ -180,6 +183,78 @@ class ConversationMessagesView(APIView):
                 conversation.save(update_fields=['updated_at'])
 
             response_serializer = MessageSerializer(message, context={'request': request})
+
+            # Broadcast new message to Channels conversation group so connected peers receive real-time message
+            try:
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        f"chat_{conversation.id}",
+                        {
+                            "type": "chat_message_broadcast",
+                            "message": response_serializer.data,
+                        }
+                    )
+            except Exception:
+                pass
+
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ConversationMarkReadView(APIView):
+    """
+    Mark all unread messages in a conversation as read by the requesting user.
+    Enforces authorization: requesting user must be a participant.
+    POST /api/chat/conversations/<conversation_id>/read/
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id, *args, **kwargs):
+        conversation = get_object_or_404(Conversation, pk=conversation_id)
+
+        participant = conversation.participants.filter(user=request.user).first()
+        if not participant:
+            return Response(
+                {"detail": "You do not have permission to access this conversation."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        now = timezone.now()
+        with transaction.atomic():
+            unread_qs = conversation.messages.filter(
+                is_read=False,
+                is_deleted=False
+            ).exclude(sender=request.user)
+
+            read_count = unread_qs.update(is_read=True, read_at=now)
+
+            participant.last_read_at = now
+            participant.save(update_fields=['last_read_at'])
+
+        # Broadcast read receipt to WebSocket conversation group
+        try:
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                async_to_sync(channel_layer.group_send)(
+                    f"chat_{conversation.id}",
+                    {
+                        "type": "chat_messages_read",
+                        "conversation_id": conversation.id,
+                        "reader_id": request.user.id,
+                        "read_at": now.isoformat(),
+                        "read_count": read_count,
+                    }
+                )
+        except Exception:
+            pass
+
+        return Response({
+            "status": "success",
+            "conversation_id": conversation.id,
+            "read_count": read_count,
+            "unread_count": 0,
+        }, status=status.HTTP_200_OK)
+

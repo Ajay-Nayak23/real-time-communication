@@ -26,12 +26,13 @@ SECRET_KEY = 'django-insecure-4kh=43@tc%(zx+xav_-bp2fmxom_!j13j(e0i%dw+1g1h38zll
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'channels',
     'users',
     'chat',
 ]
@@ -77,6 +79,13 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'commute.wsgi.application'
+ASGI_APPLICATION = 'commute.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
+}
 
 
 # Database

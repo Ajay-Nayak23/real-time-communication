@@ -2,7 +2,7 @@
 
 This file tracks the implementation progress of all 51 GitHub issues across the 11 development milestones.
 
-**Overall Progress:** `19 / 51 completed` (37.3%)
+**Overall Progress:** `21 / 51 completed` (41.2%)
 
 ---
 
@@ -71,7 +71,7 @@ This file tracks the implementation progress of all 51 GitHub issues across the 
 
 ---
 
-## 4. Database and Messaging `(6/8)`
+## 4. Database and Messaging `(8/8)`
 
 - [x] **[#14](https://github.com/Ajay-Nayak23/real-time-communication/issues/14)** — `RTC-014`: Implement user profile retrieval and update API `(Completed)`
   > **Useful Commands & Examples:**
@@ -138,9 +138,27 @@ This file tracks the implementation progress of all 51 GitHub issues across the 
   > - Message Composer Input: `frontend/src/app/features/chat/components/message-input/`
   > - Chat Service: `frontend/src/app/core/services/chat.service.ts`
   > - Run frontend unit tests: `npm test -- --watch=false`
-  > - Build frontend: `npm run build`
-- [ ] **[#20](https://github.com/Ajay-Nayak23/real-time-communication/issues/20)** — `RTC-021`: Configure Django Channels and implement real-time WebSocket chat consumer
-- [ ] **[#21](https://github.com/Ajay-Nayak23/real-time-communication/issues/21)** — `RTC-022`: Implement unread message tracking and read status indicators
+- [x] **[#20](https://github.com/Ajay-Nayak23/real-time-communication/issues/20)** — `RTC-021`: Configure Django Channels and implement real-time WebSocket chat consumer `(Completed)`
+  > **Useful Commands & Paths:**
+  > - ASGI Application: `backend/commute/asgi.py`
+  > - WebSocket Route: `ws://127.0.0.1:8000/ws/chat/<conversation_id>/?token=<ACCESS_TOKEN>`
+  > - Consumer: `backend/chat/consumers.py` (`ChatConsumer`)
+  > - JWT ASGI Middleware: `backend/chat/middleware.py` (`JWTAuthMiddlewareStack`)
+  > - Routing: `backend/chat/routing.py`
+  > - Angular Service: `frontend/src/app/core/services/chat.service.ts`
+  > - Run WebSocket tests: `python manage.py test chat.tests.ChatConsumerTests`
+- [x] **[#21](https://github.com/Ajay-Nayak23/real-time-communication/issues/21)** — `RTC-022`: Implement unread message tracking and read status indicators `(Completed)`
+  > **Useful Commands & Examples:**
+  > - Mark Messages Read:
+  >   ```bash
+  >   curl -X POST http://127.0.0.1:8000/api/chat/conversations/<id>/read/ -H "Authorization: Bearer <ACCESS_TOKEN>"
+  >   ```
+  > - Mark Messages Read via WebSocket:
+  >   ```json
+  >   { "type": "mark_read" }
+  >   ```
+  > - Models: `backend/chat/models.py` (`Message.read_at`, `ConversationParticipant.last_read_at`)
+  > - Run read tests: `python manage.py test chat.tests.ConversationMarkReadAPITests`
 
 ---
 

@@ -41,7 +41,7 @@ class LastMessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'sender_id', 'sender_name', 'content', 'is_read', 'created_at']
+        fields = ['id', 'sender_id', 'sender_name', 'content', 'is_read', 'read_at', 'created_at']
         read_only_fields = fields
 
 
@@ -208,6 +208,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'sender',
             'content',
             'is_read',
+            'read_at',
             'is_deleted',
             'created_at',
             'updated_at',
