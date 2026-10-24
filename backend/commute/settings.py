@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'channels',
     'users',
     'chat',
+    'calls',
 ]
 
 AUTH_USER_MODEL = 'users.User'

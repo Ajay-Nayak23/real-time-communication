@@ -2,7 +2,7 @@
 
 This file tracks the implementation progress of all 51 GitHub issues across the 11 development milestones.
 
-**Overall Progress:** `25 / 51 completed` (49.0%)
+**Overall Progress:** `29 / 51 completed` (56.9%)
 
 ---
 
@@ -188,12 +188,30 @@ This file tracks the implementation progress of all 51 GitHub issues across the 
 
 ---
 
-## 6. WebRTC Signaling `(0/4)`
+## 6. WebRTC Signaling `(4/4)`
 
-- [ ] **[#26](https://github.com/Ajay-Nayak23/real-time-communication/issues/26)** — Design WebRTC signaling protocol specification and message schemas
-- [ ] **[#27](https://github.com/Ajay-Nayak23/real-time-communication/issues/27)** — `RTC-024`: Create Django calls app with Call session and state data model
-- [ ] **[#28](https://github.com/Ajay-Nayak23/real-time-communication/issues/28)** — `RTC-025`: Implement WebRTC signaling WebSocket consumer and event dispatcher
-- [ ] **[#29](https://github.com/Ajay-Nayak23/real-time-communication/issues/29)** — `RTC-026`: Implement Angular WebRTC service for peer connection and signaling management
+- [x] **[#26](https://github.com/Ajay-Nayak23/real-time-communication/issues/26)** — Design WebRTC signaling protocol specification and message schemas `(Completed)`
+  > **Specification & Schemas:**
+  > - Complete specification: `docs/SIGNALING_SPEC.md`
+  > - Unified envelope: `call_id`, `caller_id`, `callee_id`, `call_type`, `payload`
+  > - Protocol events: `call_initiate`, `call_invite`, `call_ringing`, `call_accept`, `call_accepted`, `call_reject`, `call_rejected`, `sdp_offer`, `sdp_answer`, `ice_candidate`, `call_end`, `call_ended`
+- [x] **[#27](https://github.com/Ajay-Nayak23/real-time-communication/issues/27)** — `RTC-024`: Create Django calls app with Call session and state data model `(Completed)`
+  > **Useful Commands & Paths:**
+  > - App & Models: `backend/calls/models.py` (`Call` model with state machine helpers and duration tracking)
+  > - Serializers: `backend/calls/serializers.py` (`CallSerializer`, `CallInitiateSerializer`)
+  > - Migration: `backend/calls/migrations/0001_initial.py` applied
+  > - Run call model tests: `python backend/manage.py test calls.tests.CallModelTests calls.tests.CallSerializerTests`
+- [x] **[#28](https://github.com/Ajay-Nayak23/real-time-communication/issues/28)** — `RTC-025`: Implement WebRTC signaling WebSocket consumer and event dispatcher `(Completed)`
+  > **Useful Commands & Paths:**
+  > - Signaling Consumer: `backend/calls/consumers.py` (`CallSignalingConsumer` on `/ws/calls/`)
+  > - Routing: `backend/calls/routing.py` integrated into `backend/commute/asgi.py`
+  > - Run signaling tests: `python backend/manage.py test calls.tests.CallSignalingConsumerWebSocketTests`
+- [x] **[#29](https://github.com/Ajay-Nayak23/real-time-communication/issues/29)** — `RTC-026`: Implement Angular WebRTC service for peer connection and signaling management `(Completed)`
+  > **Useful Commands & Paths:**
+  > - Angular Models: `frontend/src/app/core/models/call.model.ts`
+  > - WebRTC Service: `frontend/src/app/core/services/webrtc.service.ts` (RTCPeerConnection, STUN ICE gathering, audio/video track capture and toggling)
+  > - Environment: `frontend/src/environments/environment.ts` (Google public STUN servers)
+  > - Run frontend unit tests: `npm test -- --watch=false`
 
 ---
 
