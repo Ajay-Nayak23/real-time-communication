@@ -1,10 +1,43 @@
 # Real-Time Communication Platform
 
-A full-stack real-time communication platform built from scratch using Angular and Django.
+A production-grade, full-stack real-time communication platform built from scratch using **Angular 21** and **Django 5.2 (Channels 4 & Daphne ASGI)**. It supports JWT authentication with token rotation, real-time messaging, user presence tracking, typing indicators, read receipts, and **WebRTC-powered Peer-to-Peer 1-to-1 Audio & Video Calling** with dynamic mid-call media renegotiation and Picture-in-Picture layout.
 
-The project is designed as an SDE-style production project, covering authentication, REST APIs, real-time messaging, WebSockets, WebRTC-based audio/video calling, persistence, security, testing, and deployment.
+---
 
-The goal is not only to build the application, but also to understand the architecture and engineering decisions well enough to explain them in an SDE interview.
+## 📚 Documentation & Architecture Guides
+
+* 🏛️ **[Complete Architecture & Codebase Guide](docs/ARCHITECTURE_AND_CODEBASE_GUIDE.md)** — Comprehensive architectural walkthrough, file-by-file organization, sequence diagrams, and real-time protocol specifications.
+* 🐍 **[Backend Architecture & API Guide](backend/README.md)** — Django 5.2, Daphne ASGI, Django Channels 4, database models, WebSocket consumers, REST APIs, and tests.
+* 🅰️ **[Frontend Architecture & WebRTC Guide](frontend/README.md)** — Angular 21, Standalone Components, Signals, WebRTC peer connection management, calling UI grids, and Vitest suite.
+* 📡 **[WebRTC Signaling Protocol Specification](docs/SIGNALING_SPEC.md)** — Detailed specification of all JSON signaling events exchanged over `/ws/calls/`.
+* 📋 **[Milestones & Issue Tracker](TRACKING.md)** — Real-time tracking of all 51 issues across 11 project milestones.
+
+---
+
+## 🚀 Quick Start (Running Locally)
+
+### 1. Start Backend Server (Django / Daphne)
+```bash
+cd backend
+.\.venv\Scripts\activate       # On Windows (or source .venv/bin/activate on Unix)
+python manage.py migrate
+python manage.py runserver 127.0.0.1:8000
+```
+
+### 2. Start Frontend Server (Angular Dev Server)
+```bash
+cd frontend
+npm start                      # Runs on http://localhost:4200
+```
+
+### 3. Run Automated Test Suites
+```bash
+# Frontend Tests (91 unit tests)
+cd frontend && npm test -- --watch=false
+
+# Backend Tests (14 unit tests)
+cd backend && python manage.py test users chat calls commute
+```
 
 ---
 

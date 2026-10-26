@@ -224,11 +224,11 @@ This file tracks the implementation progress of all 51 GitHub issues across the 
 
 ---
 
-## 8. Video Calling `(0/3)`
+## 8. Video Calling `(3/3)`
 
-- [ ] **[#34](https://github.com/Ajay-Nayak23/real-time-communication/issues/34)** — Implement video stream capture, media track negotiation, and peer connection setup
-- [ ] **[#35](https://github.com/Ajay-Nayak23/real-time-communication/issues/35)** — `RTC-028`: Build video call interface with local/remote video grids and camera toggle
-- [ ] **[#36](https://github.com/Ajay-Nayak23/real-time-communication/issues/36)** — Implement WebRTC media renegotiation and stream layout responsiveness
+- [x] **[#34](https://github.com/Ajay-Nayak23/real-time-communication/issues/34)** — Implement video stream capture, media track negotiation, and peer connection setup `(Completed)`
+- [x] **[#35](https://github.com/Ajay-Nayak23/real-time-communication/issues/35)** — `RTC-028`: Build video call interface with local/remote video grids and camera toggle `(Completed)`
+- [x] **[#36](https://github.com/Ajay-Nayak23/real-time-communication/issues/36)** — Implement WebRTC media renegotiation and stream layout responsiveness `(Completed)`
 
 ---
 

@@ -36,12 +36,20 @@ describe('MessageWindowComponent', () => {
     expect(compiled.querySelector('.header-name')?.textContent).toContain('Partner User');
   });
 
-  it('should emit startAudioCall on call button click', () => {
+  it('should emit startAudioCall on audio call button click', () => {
     const callSpy = vi.spyOn(component.startAudioCall, 'emit');
-    const callBtn = fixture.nativeElement.querySelector('.btn-header-call') as HTMLButtonElement;
+    const callBtn = fixture.nativeElement.querySelector('.btn-header-audio-call') as HTMLButtonElement;
     expect(callBtn).toBeTruthy();
     callBtn.click();
     expect(callSpy).toHaveBeenCalled();
+  });
+
+  it('should emit startVideoCall on video call button click', () => {
+    const videoCallSpy = vi.spyOn(component.startVideoCall, 'emit');
+    const videoCallBtn = fixture.nativeElement.querySelector('.btn-header-video-call') as HTMLButtonElement;
+    expect(videoCallBtn).toBeTruthy();
+    videoCallBtn.click();
+    expect(videoCallSpy).toHaveBeenCalled();
   });
 
   it('should format message timestamps', () => {

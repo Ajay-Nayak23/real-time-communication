@@ -41,6 +41,7 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
           (newChatClicked)="openNewChatModal()"
           (callHistoryClicked)="openCallHistoryModal()"
           (callUser)="onStartAudioCall($event)"
+          (videoCallUser)="onStartVideoCall($event)"
         ></app-conversation-list>
       </div>
 
@@ -58,6 +59,7 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
               [typingUser]="chatService.typingUser()"
               (backClicked)="closeMobileThread()"
               (startAudioCall)="onStartAudioCall($event || activeConv.other_participant)"
+              (startVideoCall)="onStartVideoCall($event || activeConv.other_participant)"
             ></app-message-window>
 
             <app-message-input
@@ -146,6 +148,18 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
                             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                           </svg>
                         </button>
+                        <button
+                          type="button"
+                          class="btn-user-call btn-user-video"
+                          (click)="$event.stopPropagation(); startDirectVideoCall(user)"
+                          title="Start video call"
+                          aria-label="Start video call"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                          </svg>
+                        </button>
                         <button type="button" class="btn-connect">Chat</button>
                       </div>
                     </div>
@@ -174,9 +188,17 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
           [partnerName]="call.partner_name"
           [partnerAvatar]="call.partner_avatar"
           [callState]="webrtcService.callState()"
+          [callType]="call.call_type"
           [isAudioMuted]="webrtcService.isAudioMuted()"
+          [isVideoMuted]="webrtcService.isVideoMuted()"
+          [isRemoteVideoMuted]="webrtcService.isRemoteVideoMuted()"
+          [localStream]="webrtcService.localStream()"
           [remoteStream]="webrtcService.remoteStream()"
+          [canSwitchCamera]="webrtcService.hasMultipleVideoDevices()"
           (toggleMute)="webrtcService.toggleAudio()"
+          (toggleVideo)="webrtcService.toggleVideo()"
+          (switchCamera)="webrtcService.switchCamera()"
+          (upgradeToVideo)="webrtcService.upgradeToVideo()"
           (endCall)="webrtcService.endCall()"
         ></app-active-call-overlay>
       }
@@ -476,6 +498,30 @@ export class ChatComponent implements OnInit, OnDestroy {
       });
   }
 
+  onStartVideoCall(partner?: User | null): void {
+    if (!partner) {
+      const active = this.chatService.activeConversation();
+      const currentId = this.authService.currentUser()?.id;
+      partner = active?.participants?.find((p) => p.user?.id !== currentId)?.user || null;
+    }
+
+    if (!partner) {
+      this.alertService.showWarning('Could not determine recipient for video call.');
+      return;
+    }
+
+    this.webrtcService
+      .startCall(
+        partner.id,
+        partner.name || partner.email.split('@')[0],
+        'video',
+        partner.profile_image || partner.avatar
+      )
+      .catch((err) => {
+        this.alertService.showError(err.message || 'Failed to start video call.');
+      });
+  }
+
   onAcceptIncomingCall(): void {
     this.webrtcService.acceptCall().catch((err) => {
       this.alertService.showError(err.message || 'Failed to answer call.');
@@ -549,6 +595,11 @@ export class ChatComponent implements OnInit, OnDestroy {
   startDirectCall(user: User): void {
     this.closeNewChatModal();
     this.onStartAudioCall(user);
+  }
+
+  startDirectVideoCall(user: User): void {
+    this.closeNewChatModal();
+    this.onStartVideoCall(user);
   }
 
   getDisplayName(user?: User | null): string {

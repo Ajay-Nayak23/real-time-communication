@@ -163,6 +163,12 @@ describe('ChatComponent', () => {
     expect(startCallSpy).toHaveBeenCalledWith(2, 'Bob', 'audio', undefined);
   });
 
+  it('should initiate video call when onStartVideoCall is invoked', async () => {
+    const startCallSpy = vi.spyOn(component.webrtcService, 'startCall').mockResolvedValue();
+    component.onStartVideoCall(mockPeerUser);
+    expect(startCallSpy).toHaveBeenCalledWith(2, 'Bob', 'video', undefined);
+  });
+
   it('should toggle call history modal', () => {
     expect(component.showCallHistoryModal()).toBe(false);
     component.openCallHistoryModal();

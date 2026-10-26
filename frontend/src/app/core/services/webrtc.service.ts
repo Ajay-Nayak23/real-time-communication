@@ -19,6 +19,8 @@ export class WebRTCService implements OnDestroy {
   readonly remoteStream = signal<MediaStream | null>(null);
   readonly isAudioMuted = signal<boolean>(false);
   readonly isVideoMuted = signal<boolean>(false);
+  readonly isRemoteVideoMuted = signal<boolean>(false);
+  readonly hasMultipleVideoDevices = signal<boolean>(false);
   readonly isSocketConnected = signal<boolean>(false);
   readonly error = signal<string | null>(null);
 
@@ -27,6 +29,8 @@ export class WebRTCService implements OnDestroy {
   private peerConnection: RTCPeerConnection | null = null;
   private reconnectTimer: any = null;
   private shouldReconnect = true;
+  private isRenegotiating = false;
+  private currentFacingMode: 'user' | 'environment' = 'user';
 
   ngOnDestroy(): void {
     this.endCall('completed');
@@ -121,7 +125,7 @@ export class WebRTCService implements OnDestroy {
   }
 
   /**
-   * Start an outgoing call to a specific user.
+   * Start an outgoing call to a specific user (audio or video).
    */
   async startCall(
     calleeId: number,
@@ -257,9 +261,9 @@ export class WebRTCService implements OnDestroy {
   }
 
   /**
-   * Toggle local camera mute state (video calls).
+   * Toggle local camera mute state (or upgrade if audio-only).
    */
-  toggleVideo(): boolean {
+  async toggleVideo(): Promise<boolean> {
     const stream = this.localStream();
     if (!stream) return false;
 
@@ -268,8 +272,135 @@ export class WebRTCService implements OnDestroy {
       videoTrack.enabled = !videoTrack.enabled;
       this.isVideoMuted.set(!videoTrack.enabled);
       return videoTrack.enabled;
+    } else {
+      // If no video track exists in local stream, perform renegotiation to upgrade to video
+      await this.upgradeToVideo();
+      return true;
     }
-    return false;
+  }
+
+  /**
+   * Upgrade an ongoing audio call to a video call (WebRTC renegotiation).
+   */
+  async upgradeToVideo(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || !navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Video devices unavailable in current environment.');
+    }
+
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          facingMode: 'user',
+        },
+      });
+
+      const videoTrack = videoStream.getVideoTracks()[0];
+      if (!videoTrack) return;
+
+      const currentLocal = this.localStream();
+      let updatedLocal: MediaStream;
+
+      if (currentLocal) {
+        currentLocal.addTrack(videoTrack);
+        updatedLocal = new MediaStream(currentLocal.getTracks());
+      } else {
+        updatedLocal = videoStream;
+      }
+
+      this.localStream.set(updatedLocal);
+      this.isVideoMuted.set(false);
+
+      const current = this.currentCall();
+      if (current) {
+        this.currentCall.set({ ...current, call_type: 'video' });
+      }
+
+      // Add track to RTCPeerConnection
+      if (this.peerConnection) {
+        this.peerConnection.addTrack(videoTrack, updatedLocal);
+        // onnegotiationneeded will automatically fire and dispatch new SDP offer!
+      }
+
+      this.checkVideoDevices();
+    } catch (err: any) {
+      console.error('[WebRTC] Failed to upgrade to video:', err);
+      this.error.set(err.message || 'Could not access camera for video upgrade.');
+      throw err;
+    }
+  }
+
+  /**
+   * Switch front/rear camera without dropping the call.
+   */
+  async switchCamera(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+
+    const currentLocal = this.localStream();
+    if (!currentLocal) return;
+
+    const oldVideoTrack = currentLocal.getVideoTracks()[0];
+    if (!oldVideoTrack) return;
+
+    this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+
+    try {
+      let newStream: MediaStream;
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { exact: this.currentFacingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+      } catch {
+        // Fallback without exact facingMode constraint
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: this.currentFacingMode },
+        });
+      }
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      if (!newVideoTrack) return;
+
+      // Replace track on RTCRtpSender smoothly without full renegotiation
+      if (this.peerConnection) {
+        const senders = this.peerConnection.getSenders();
+        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          await videoSender.replaceTrack(newVideoTrack);
+        }
+      }
+
+      // Stop old track and attach new track
+      oldVideoTrack.stop();
+      currentLocal.removeTrack(oldVideoTrack);
+      currentLocal.addTrack(newVideoTrack);
+      this.localStream.set(new MediaStream(currentLocal.getTracks()));
+      this.isVideoMuted.set(false);
+    } catch (err) {
+      console.warn('[WebRTC] Could not switch camera:', err);
+    }
+  }
+
+  /**
+   * Query available video devices for multi-camera flip capability.
+   */
+  async checkVideoDevices(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || !navigator.mediaDevices?.enumerateDevices) {
+      return;
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+      this.hasMultipleVideoDevices.set(videoInputs.length > 1);
+    } catch {
+      this.hasMultipleVideoDevices.set(false);
+    }
   }
 
   // --- WebRTC Peer Connection Lifecycle ---
@@ -291,6 +422,25 @@ export class WebRTCService implements OnDestroy {
       local.getTracks().forEach((track) => pc.addTrack(track, local));
     }
 
+    // Dynamic Media Renegotiation Handler
+    pc.onnegotiationneeded = async () => {
+      try {
+        if (this.isRenegotiating || pc.signalingState !== 'stable') {
+          return;
+        }
+        const call = this.currentCall();
+        if (!call || !call.call_id || (this.callState() !== 'connected' && this.callState() !== 'calling')) {
+          return;
+        }
+        this.isRenegotiating = true;
+        await this.createAndSendOffer(call.call_id);
+      } catch (err) {
+        console.error('[WebRTC] Error during negotiationneeded:', err);
+      } finally {
+        this.isRenegotiating = false;
+      }
+    };
+
     // ICE candidate gathering
     pc.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
       const call = this.currentCall();
@@ -303,13 +453,27 @@ export class WebRTCService implements OnDestroy {
       }
     };
 
-    // Receive remote media tracks
+    // Receive remote media tracks (aggregates audio and video into remoteStream signal)
     pc.ontrack = (event: RTCTrackEvent) => {
-      if (event.streams && event.streams[0]) {
-        this.remoteStream.set(event.streams[0]);
-      } else {
-        const stream = new MediaStream([event.track]);
+      console.log('[WebRTC] Received remote track:', event.track.kind);
+      let stream = this.remoteStream();
+
+      if (!stream) {
+        stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
         this.remoteStream.set(stream);
+      } else {
+        if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+          stream.addTrack(event.track);
+          this.remoteStream.set(new MediaStream(stream.getTracks()));
+        }
+      }
+
+      // Track mute / unmute states for remote video
+      if (event.track.kind === 'video') {
+        this.isRemoteVideoMuted.set(!event.track.enabled || event.track.muted);
+        event.track.onmute = () => this.isRemoteVideoMuted.set(true);
+        event.track.onunmute = () => this.isRemoteVideoMuted.set(false);
+        event.track.onended = () => this.isRemoteVideoMuted.set(true);
       }
     };
 
@@ -468,25 +632,55 @@ export class WebRTCService implements OnDestroy {
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error(
-        'Audio capture is unavailable. If you are accessing this app over HTTP, please use http://localhost:4200 instead of an IP address for browser security.'
+        'Media capture is unavailable. If you are accessing this app over HTTP, please use http://localhost:4200 instead of an IP address for browser security.'
       );
     }
 
     const constraints: MediaStreamConstraints = {
-      audio: true,
-      video: callType === 'video',
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video:
+        callType === 'video'
+          ? {
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              facingMode: 'user',
+            }
+          : false,
     };
 
     try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.checkVideoDevices();
+      return stream;
     } catch (err: any) {
+      // Fallback for strict camera constraints on low-end webcams
+      if (callType === 'video' && (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError')) {
+        try {
+          const fallback = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          this.checkVideoDevices();
+          return fallback;
+        } catch {}
+      }
+
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        throw new Error('Microphone permission was denied. Please allow microphone access in your browser address bar.');
+        throw new Error(
+          callType === 'video'
+            ? 'Camera or microphone permission was denied. Please allow camera and microphone access in your browser.'
+            : 'Microphone permission was denied. Please allow microphone access in your browser address bar.'
+        );
       }
       if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        throw new Error('No microphone device found on your computer.');
+        throw new Error(
+          callType === 'video'
+            ? 'No camera or microphone device found on your computer.'
+            : 'No microphone device found on your computer.'
+        );
       }
-      throw new Error(err.message || 'Could not access microphone.');
+      throw new Error(err.message || 'Could not access media devices.');
     }
   }
 
@@ -505,6 +699,8 @@ export class WebRTCService implements OnDestroy {
 
     this.isAudioMuted.set(false);
     this.isVideoMuted.set(false);
+    this.isRemoteVideoMuted.set(false);
+    this.isRenegotiating = false;
   }
 
   private cleanupPeerConnection(): void {

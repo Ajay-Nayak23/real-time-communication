@@ -51,4 +51,20 @@ describe('ConversationListComponent', () => {
     newChatBtn.click();
     expect(newChatSpy).toHaveBeenCalled();
   });
+
+  it('should emit callUser when clicking audio call icon on conversation card', () => {
+    const callSpy = vi.spyOn(component.callUser, 'emit');
+    const audioBtn = fixture.nativeElement.querySelector('.btn-card-audio') as HTMLButtonElement;
+    expect(audioBtn).toBeTruthy();
+    audioBtn.click();
+    expect(callSpy).toHaveBeenCalledWith(mockConv.other_participant);
+  });
+
+  it('should emit videoCallUser when clicking video call icon on conversation card', () => {
+    const videoSpy = vi.spyOn(component.videoCallUser, 'emit');
+    const videoBtn = fixture.nativeElement.querySelector('.btn-card-video') as HTMLButtonElement;
+    expect(videoBtn).toBeTruthy();
+    videoBtn.click();
+    expect(videoSpy).toHaveBeenCalledWith(mockConv.other_participant);
+  });
 });
