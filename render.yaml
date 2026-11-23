@@ -5,10 +5,10 @@ services:
   # ─── Django Backend ───
   - type: web
     name: realtime-backend
-    env: python
+    runtime: python
     plan: free
     region: oregon
-    rootDirectory: backend
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: |
       python manage.py migrate --no-input &&
@@ -37,11 +37,10 @@ services:
     healthCheckPath: /health/
 
   # ─── Angular Frontend (Static Site) ───
-  - type: static
+  - type: web
     name: realtime-frontend
-    plan: free
-    region: oregon
-    rootDirectory: frontend
+    runtime: static
+    rootDir: frontend
     buildCommand: |
       chmod +x build-env.sh
       ./build-env.sh
