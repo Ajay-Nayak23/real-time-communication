@@ -56,16 +56,16 @@ services:
   # ─── Django Backend ───
   - type: web
     name: realtime-backend
-    env: python
+    runtime: python
     plan: free
-    region: oregon  # or frankfurt, singapore
-    rootDirectory: backend
+    region: oregon
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: |
       python manage.py migrate --no-input &&
       python manage.py collectstatic --no-input &&
-      gunicorn commute.wsgi:application --bind 0.0.0.0:$PORT
-    envVariables:
+      daphne -b 0.0.0.0 -p $PORT commute.asgi:application
+    envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: realtime-db
@@ -77,6 +77,8 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
+      - key: DEBUG
+        value: "false"
       - key: ALLOWED_HOSTS
         value: ".onrender.com"
       - key: CORS_ALLOWED_ORIGINS
@@ -86,34 +88,38 @@ services:
     healthCheckPath: /health/
 
   # ─── Angular Frontend (Static Site) ───
-  - type: static
+  - type: web
     name: realtime-frontend
-    plan: free
-    region: oregon
-    rootDirectory: frontend
-    buildCommand: npm install && npm run build -- --configuration=static
-    staticPublishPath: dist/frontend/browser/browser  # Angular outputs to nested browser folder
+    runtime: static
+    rootDir: frontend
+    buildCommand: |
+      chmod +x build-env.sh
+      ./build-env.sh
+      npm install
+      npm run build
+    staticPublishPath: dist/frontend/browser/browser
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
-    envVariables:
+    envVars:
       - key: NODE_VERSION
         value: "20"
-
-  # ─── PostgreSQL Database (Free) ───
-  databases:
-    - name: realtime-db
-      plan: free
-      ipAllowList: []  # allow all (Render internal only)
+      - key: BACKEND_URL
+        value: "https://realtime-backend.onrender.com"
 
   # ─── Redis (Free) ───
-  services:
-    - type: redis
-      name: realtime-redis
-      plan: free
-      region: oregon
-      ipAllowList: []
+  - type: redis
+    name: realtime-redis
+    plan: free
+    region: oregon
+    ipAllowList: []
+
+databases:
+  # ─── PostgreSQL Database (Free) ───
+  - name: realtime-db
+    plan: free
+    ipAllowList: []
 ```
 
 > **Note:** Adjust `staticPublishPath` to match your Angular output directory. Run `npm run build` locally first to confirm (usually `dist/frontend/browser` or `dist/your-app-name`).
@@ -313,6 +319,7 @@ Ensure `frontend/angular.json` outputs to expected path:
 ```
 
 Run locally to verify:
+
 ```bash
 cd frontend
 npm run build -- --configuration=static
@@ -324,6 +331,7 @@ ls dist/frontend/browser/browser  # should contain index.html, assets/
 ## 🚀 Deployment Steps (Render)
 
 ### Step 1: Push to GitHub
+
 ```bash
 cd realtime-communication-platform
 git init
@@ -335,6 +343,7 @@ git push -u origin main
 ```
 
 ### Step 2: Connect to Render
+
 1. Go to [dashboard.render.com](https://dashboard.render.com)
 2. Click **New > Blueprint** (or "New > Web Service" if not using Blueprint)
 3. Select your GitHub repo
@@ -346,11 +355,13 @@ git push -u origin main
 5. Click **Apply** — Render provisions everything
 
 ### Step 3: Wait for First Deploy (3–5 minutes)
+
 - Backend builds: `pip install`, runs migrations, collects static
 - Frontend builds: `npm install`, `npm run build`
 - Database and Redis are created and connected via env vars
 
 ### Step 4: Verify
+
 - Backend: `https://realtime-backend.onrender.com/health/` → `{"status":"healthy"}`
 - Frontend: `https://realtime-frontend.onrender.com/` → Angular app loads
 - Test WebSocket: Open browser console, check `/ws/chat/` and `/ws/calls/` connections
@@ -360,6 +371,7 @@ git push -u origin main
 ## 🔄 Subsequent Deployments (Version 2, 3, ...)
 
 **Just push to main:**
+
 ```bash
 git add .
 git commit -m "feat: add new feature"
@@ -367,6 +379,7 @@ git push origin main
 ```
 
 Render automatically:
+
 1. Detects push to `main`
 2. Re-runs `buildCommand` for each service
 3. Restarts backend with new code
@@ -381,9 +394,11 @@ Render automatically:
 ## 🌐 Alternative: Split Hosting (Render + Netlify)
 
 ### Backend on Render
+
 Same as above, but only deploy `backend/` as Web Service + PostgreSQL + Redis.
 
 ### Frontend on Netlify
+
 ```bash
 # Option A: Drag & Drop (quick test)
 cd frontend
@@ -398,7 +413,9 @@ npm run build
 ```
 
 ### CORS Update
+
 In Render backend env vars, set:
+
 ```
 CORS_ALLOWED_ORIGINS=https://your-app.netlify.app
 ```
@@ -407,43 +424,49 @@ CORS_ALLOWED_ORIGINS=https://your-app.netlify.app
 
 ## ⚙️ Environment Variables Reference
 
-| Variable | Service | Required | Source |
-|----------|---------|----------|--------|
-| `DATABASE_URL` | Backend | ✅ | Render PostgreSQL (auto) |
-| `REDIS_URL` | Backend | ✅ | Render Redis (auto) |
-| `SECRET_KEY` | Backend | ✅ | Render auto-generates |
-| `ALLOWED_HOSTS` | Backend | ✅ | `.onrender.com` or custom domain |
-| `CORS_ALLOWED_ORIGINS` | Backend | ✅ | Frontend URL(s) |
-| `USE_REDIS_CHANNEL_LAYER` | Backend | ✅ | `"true"` |
-| `NODE_VERSION` | Frontend | Optional | `"20"` |
+| Variable                  | Service  | Required | Source                           |
+| ------------------------- | -------- | -------- | -------------------------------- |
+| `DATABASE_URL`            | Backend  | ✅       | Render PostgreSQL (auto)         |
+| `REDIS_URL`               | Backend  | ✅       | Render Redis (auto)              |
+| `SECRET_KEY`              | Backend  | ✅       | Render auto-generates            |
+| `ALLOWED_HOSTS`           | Backend  | ✅       | `.onrender.com` or custom domain |
+| `CORS_ALLOWED_ORIGINS`    | Backend  | ✅       | Frontend URL(s)                  |
+| `USE_REDIS_CHANNEL_LAYER` | Backend  | ✅       | `"true"`                         |
+| `NODE_VERSION`            | Frontend | Optional | `"20"`                           |
 
 ---
 
 ## 🐛 Troubleshooting
 
 ### "Module not found: whitenoise"
+
 ```bash
 pip install whitenoise
 # Add to requirements.txt
 ```
 
 ### "Database connection failed"
+
 - Check `DATABASE_URL` is set in Render dashboard
 - Ensure PostgreSQL service is "Available" (green)
 
 ### "WebSocket connection failed"
+
 - Verify `REDIS_URL` is set and Redis service is running
 - Check `CHANNEL_LAYERS` uses `channels_redis.core.RedisChannelLayer`
 
 ### "CORS error in browser"
+
 - Verify `CORS_ALLOWED_ORIGINS` includes your frontend URL exactly
 - Check for trailing slashes: `https://app.onrender.com` not `https://app.onrender.com/`
 
 ### "Static files not loading"
+
 - Ensure `collectstatic` ran (check Render build logs)
 - Verify `STATIC_ROOT` and `whitenoise` middleware order
 
 ### "Angular routes return 404 on refresh"
+
 - Add rewrite rule in `render.yaml` (already included above)
 - Or Netlify: `/* /index.html 200` redirect
 
@@ -451,13 +474,13 @@ pip install whitenoise
 
 ## 📊 Free Tier Limits (Render)
 
-| Resource | Limit |
-|----------|-------|
-| Web Service | 750 hrs/mo (sleeps after 15 min inactivity) |
-| Static Site | Unlimited bandwidth, 100 GB/mo |
-| PostgreSQL | 90 days (then auto-deleted if inactive) |
-| Redis | 25 MB, shared instance |
-| Custom Domains | Free |
+| Resource       | Limit                                       |
+| -------------- | ------------------------------------------- |
+| Web Service    | 750 hrs/mo (sleeps after 15 min inactivity) |
+| Static Site    | Unlimited bandwidth, 100 GB/mo              |
+| PostgreSQL     | 90 days (then auto-deleted if inactive)     |
+| Redis          | 25 MB, shared instance                      |
+| Custom Domains | Free                                        |
 
 > **Tip:** Use a custom domain to avoid cold starts affecting UX. Free tier sleeps after 15 min of no traffic.
 
@@ -466,6 +489,7 @@ pip install whitenoise
 ## 🔐 Production Checklist
 
 Before going live:
+
 - [ ] `DEBUG = False` in production (auto via env var)
 - [ ] `SECRET_KEY` from env (auto-generated by Render)
 - [ ] `ALLOWED_HOSTS` restricted to your domain(s)
@@ -484,4 +508,4 @@ Before going live:
 
 ---
 
-*Generated for Real-Time Communication Platform v1.0*
+_Generated for Real-Time Communication Platform v1.0_
