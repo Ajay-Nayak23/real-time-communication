@@ -44,23 +44,27 @@ import { FormsModule } from '@angular/forms';
     .message-composer {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.85rem;
       padding: 0.85rem 1.25rem;
       background: rgba(15, 23, 42, 0.85);
       backdrop-filter: blur(20px);
       border-top: 1px solid rgba(255, 255, 255, 0.08);
+      box-sizing: border-box;
     }
 
     .input-wrapper {
       flex: 1;
       position: relative;
+      min-width: 0;
     }
 
     .message-textarea {
+      display: block;
       width: 100%;
       min-height: 42px;
       max-height: 120px;
       padding: 0.65rem 1rem;
+      box-sizing: border-box;
       background: rgba(30, 41, 59, 0.7);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 12px;
