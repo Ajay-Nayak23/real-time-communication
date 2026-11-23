@@ -213,20 +213,29 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+    }
+
     .chat-layout {
       display: flex;
-      height: calc(100vh - 70px);
+      height: 100%;
+      min-height: 0;
       width: 100%;
       overflow: hidden;
       background: radial-gradient(circle at 15% 20%, rgba(30, 58, 138, 0.25) 0%, rgba(15, 23, 42, 0.95) 100%);
     }
 
     .sidebar-pane {
-      width: 340px;
+      width: clamp(300px, 26vw, 380px);
       min-width: 280px;
-      max-width: 400px;
       height: 100%;
       flex-shrink: 0;
+      border-right: 1px solid rgba(148, 163, 184, 0.14);
     }
 
     .chat-main-pane {
@@ -235,6 +244,7 @@ import { CallHistoryModalComponent } from './components/call-history-modal/call-
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      min-width: 0;
       background: rgba(15, 23, 42, 0.4);
     }
 

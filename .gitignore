@@ -1,23 +1,44 @@
+# =========================
 # Python
+# =========================
 backend/.venv/
 backend/__pycache__/
 backend/**/*.pyc
+*.py[cod]
 
 # Django
 backend/db.sqlite3
+backend/staticfiles/
+backend/media/
 
-# Node
+# =========================
+# Node / Angular
+# =========================
 frontend/node_modules/
 frontend/.angular/
+frontend/dist/
 
-# Environment
+# =========================
+# Environment variables
+# =========================
 .env
 *.env
 
+# =========================
 # IDE
+# =========================
 .vscode/
 .idea/
 
+# =========================
 # OS
+# =========================
 .DS_Store
 Thumbs.db
+
+# =========================
+# Render
+# =========================
+.render/
+
+specs/ISSUE CREATION.MD

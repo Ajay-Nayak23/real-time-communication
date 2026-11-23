@@ -1,0 +1,72 @@
+# render.yaml - Render Blueprint for Real-Time Communication Platform
+# Deploy with: New > Blueprint on dashboard.render.com
+
+services:
+  # ─── Django Backend ───
+  - type: web
+    name: realtime-backend
+    env: python
+    plan: free
+    region: oregon
+    rootDirectory: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: |
+      python manage.py migrate --no-input &&
+      python manage.py collectstatic --no-input &&
+      daphne -b 0.0.0.0 -p $PORT commute.asgi:application
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: realtime-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: realtime-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://realtime-frontend.onrender.com"
+      - key: USE_REDIS_CHANNEL_LAYER
+        value: "true"
+    healthCheckPath: /health/
+
+  # ─── Angular Frontend (Static Site) ───
+  - type: static
+    name: realtime-frontend
+    plan: free
+    region: oregon
+    rootDirectory: frontend
+    buildCommand: |
+      chmod +x build-env.sh
+      ./build-env.sh
+      npm install
+      npm run build
+    staticPublishPath: dist/frontend/browser/browser
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: BACKEND_URL
+        value: "https://realtime-backend.onrender.com"
+
+  # ─── Redis (Free) ───
+  - type: redis
+    name: realtime-redis
+    plan: free
+    region: oregon
+    ipAllowList: []
+
+databases:
+  # ─── PostgreSQL Database (Free) ───
+  - name: realtime-db
+    plan: free
+    ipAllowList: []
